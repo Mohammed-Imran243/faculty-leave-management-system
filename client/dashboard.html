@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+
+<body>
+    <div class="dashboard-layout">
+        <div class="sidebar">
+            <div class="brand">🎓 Faculty System</div>
+            <div id="sidebar-menu">
+                <!-- Populated by JS -->
+            </div>
+            <div style="flex:1"></div>
+            <button class="logout-btn" onclick="logout()">Sign Out</button>
+        </div>
+        <div class="main-content">
+            <div class="header">
+                <style>
+                    .notification-bell { position: relative; cursor: pointer; margin-right: 20px; font-size: 1.2rem; }
+                    .notification-badge { position: absolute; top: -5px; right: -5px; background: red; color: white; border-radius: 50%; padding: 2px 6px; font-size: 0.7rem; display: none;}
+                    .notification-dropdown { position: absolute; top: 30px; right: 0; background: white; border: 1px solid #ddd; box-shadow: 0 4px 6px rgba(0,0,0,0.1); width: 300px; display: none; z-index: 1000; max-height: 400px; overflow-y: auto; }
+                    .notification-item { padding: 10px; border-bottom: 1px solid #eee; font-size: 0.9rem; }
+                    .notification-item:hover { background: #f9f9f9; }
+                    .notification-item.unread { background: #eef2ff; font-weight: 500; }
+                </style>
+                <div style="display:flex; align-items:center">
+                    <button class="mobile-menu-btn" onclick="toggleSidebar()"><i class="fa fa-bars"></i></button>
+                    <div id="notification-wrapper" style="position:relative">
+                        <span class="notification-bell text-gray-600" onclick="toggleNotifications()"><i class="fa fa-bell" style="color: #fbbf24;"></i><span id="notif-badge" class="notification-badge">0</span></span>
+                        <div id="notif-dropdown" class="notification-dropdown"></div>
+                    </div>
+                </div>
+
+                <h3 id="current-view-title" style="flex:1">Dashboard</h3>
+                <div>
+                    <span id="user-name" style="font-weight:600">User</span>
+                    <span id="user-role" class="status-badge" style="background:#e2e8f0; margin-left:8px">ROLE</span>
+                </div>
+            </div>
+
+            <div id="content-area">
+                <!-- Dynamic Content Loading -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Create User Modal -->
+    <div id="createUserModal" class="modal">
+        <div class="modal-content">
+            <h2>Create New User</h2>
+            <form onsubmit="handleCreateUser(event)">
+                <div class="form-group">
+                    <label>Full Name</label>
+                    <input type="text" name="name" class="form-control" required>
+                </div>
+                <div class="form-group">
+                    <label>Username</label>
+                    <input type="text" name="username" class="form-control" required>
+                </div>
+                <div class="form-group">
+                    <label>Email</label>
+                    <input type="email" name="email" class="form-control" required>
+                </div>
+                <div class="form-group">
+                    <label>Password</label>
+                    <input type="password" name="password" class="form-control" required>
+                </div>
+                <div class="form-group">
+                    <label>Role</label>
+                    <select name="role" class="form-control">
+                        <option value="faculty">Faculty</option>
+                        <option value="hod">HoD</option>
+                        <option value="principal">Principal</option>
+                        <option value="admin">Admin</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Department</label>
+                    <input type="text" name="department" class="form-control">
+                </div>
+                <div style="display:flex; gap:10px; margin-top:20px">
+                    <button type="button" class="logout-btn" onclick="hideCreateUserModal()">Cancel</button>
+                    <button type="submit" class="btn">Create User</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script src="app.js" type="module"></script>
+    <script type="module">
+        import { initDashboard } from './app.js';
+        // We can access initDashboard because we exported it to window, but since we are in a module script, we can also just wait for the window property.
+        // However, standard DOMContentLoaded might fire before the module executes.
+        // Module scripts are deferred by default, so they run after parsing.
+        
+        // Let's rely on the window export, but due to module timing, we should use window.onload or simply call it if it exists.
+        // Actually, since app.js attaches itself to window, we can just use a regular script that waits for it? 
+        // No, simplest way: Just use the same pattern as index.html
+        
+        // Better yet, let's just trigger it from within app.js if we detect we are on the dashboard.
+    </script>
+    <script>
+        // Wait for module to load and expose initDashboard
+        window.addEventListener('load', () => {
+            if (window.initDashboard) {
+                initDashboard();
+            } else {
+                 console.error("initDashboard not found even after load");
+            }
+        });
+    </script>
+</body>
+
+</html>
