@@ -306,5 +306,39 @@ $pdf->Cell(60,5,'PRINCIPAL',0,0,'C');
 
 logAudit($conn, ($user['id'] ?? null), 'PDF_DOWNLOAD', ['leave_id'=>$leaveId]);
 
-$pdf->Output();
+// 5. Output Buffering & Validation
+// Capture PDF content as string
+$pdfContent = $pdf->Output('S');
+
+// Basic Validation: Check for PDF header
+if (substr($pdfContent, 0, 5) !== '%PDF-') {
+    // Log failure
+    error_log("PDF Validation Failed for Leave ID: $leaveId");
+    
+    // Attempt Fallback: Re-generate without images/signatures if they caused the issue
+    // For now, we return 500 to prevent corrupted file download, or a simple text PDF.
+    
+    // Let's create a textual error PDF instead of corrupt file
+    ob_end_clean(); // Ensure clean
+    $errPdf = new FPDF();
+    $errPdf->AddPage();
+    $errPdf->SetFont('Arial','B',16);
+    $errPdf->Cell(0,10,'Error Generating Application PDF',0,1,'C');
+    $errPdf->SetFont('Arial','',12);
+    $errPdf->Ln(10);
+    $errPdf->Write(5, "The PDF system attempted to generate this document but failed validation.\n");
+    $errPdf->Write(5, "Please contact the administrator.\n\n");
+    $errPdf->Write(5, "Debug Info: Header missing.");
+    $errPdf->Output(); // Output the error PDF
+    exit;
+}
+
+// Validation Passed
+header('Content-Type: application/pdf');
+header('Content-Disposition: inline; filename="Leave_Application_'.$leaveId.'.pdf"');
+header('Cache-Control: private, max-age=0, must-revalidate');
+header('Pragma: public');
+header('Content-Length: ' . strlen($pdfContent));
+
+echo $pdfContent;
 ?>

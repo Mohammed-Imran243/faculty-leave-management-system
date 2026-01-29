@@ -50,12 +50,15 @@ function create_user($conn) {
         return;
     }
 
+    // Default username to email prefix if not set
+    $username = isset($data->username) ? $data->username : explode('@', $data->email)[0];
+
     $hash = password_hash($data->password, PASSWORD_DEFAULT);
     $dept = isset($data->department) ? $data->department : '';
 
     try {
-        $stmt = $conn->prepare("INSERT INTO users (name, email, password_hash, role, department) VALUES (?, ?, ?, ?, ?)");
-        $stmt->execute([$data->name, $data->email, $hash, $data->role, $dept]);
+        $stmt = $conn->prepare("INSERT INTO users (name, username, email, password_hash, role, department) VALUES (?, ?, ?, ?, ?, ?)");
+        $stmt->execute([$data->name, $username, $data->email, $hash, $data->role, $dept]);
         echo json_encode(["message" => "User created successfully"]);
     } catch(PDOException $e) {
         http_response_code(500);

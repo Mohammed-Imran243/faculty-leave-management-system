@@ -12,7 +12,7 @@
 <body>
     <div class="dashboard-layout">
         <div class="sidebar">
-            <div class="brand">🎓 Faculty System</div>
+            <div class="brand">🎓 Faculty System (UPDATED)</div>
             <div id="sidebar-menu">
                 <!-- Populated by JS -->
             </div>
@@ -92,9 +92,9 @@
         </div>
     </div>
 
-    <script src="app.js" type="module"></script>
+    <script src="app_v4.1.js" type="module"></script>
     <script type="module">
-        import { initDashboard } from './app.js';
+        import { initDashboard } from './app_v4.1.js';
         // We can access initDashboard because we exported it to window, but since we are in a module script, we can also just wait for the window property.
         // However, standard DOMContentLoaded might fire before the module executes.
         // Module scripts are deferred by default, so they run after parsing.

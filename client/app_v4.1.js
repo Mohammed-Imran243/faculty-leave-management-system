@@ -19,9 +19,12 @@ function escapeHtml(text) {
 }
 
 // --- API Helper ---
+// --- API Helper ---
 async function apiCall(endpoint, method = 'GET', body = null) {
     const headers = { 'Content-Type': 'application/json' };
     if (state.token) headers['Authorization'] = `Bearer ${state.token}`;
+
+    console.log(`[DEBUG] Fetching: ${API_URL}${endpoint}`);
 
     try {
         const response = await fetch(`${API_URL}${endpoint}`, {
@@ -30,20 +33,27 @@ async function apiCall(endpoint, method = 'GET', body = null) {
             body: body ? JSON.stringify(body) : null
         });
 
+        // Handle Non-OK with JSON body
         if (response.status === 401 || response.status === 403) {
             const errData = await response.json().catch(() => ({ error: 'Unauthorized' }));
-            // Only redirect if not already on index and not just a failed login
             if (!window.location.pathname.endsWith('index.html') && !endpoint.includes('/login')) {
                 logout();
             }
             return errData;
         }
 
-        return await response.json();
+        // Try parsing JSON
+        const text = await response.text();
+        try {
+            return JSON.parse(text);
+        } catch (e) {
+            console.error('[CRITICAL] API Response was not JSON:', text);
+            throw new Error('Server returned HTML/Invalid JSON. Check Console.');
+        }
+
     } catch (error) {
         console.error('API Error:', error);
-        // alert('Connection Error. Make sure XAMPP is running and URL is correct.');
-        return null;
+        return { error: error.message };
     }
 }
 
@@ -659,6 +669,7 @@ window.toggleHour = toggleHour;
 window.showCreateUserModal = showCreateUserModal;
 window.hideCreateUserModal = hideCreateUserModal;
 window.handleCreateUser = handleCreateUser;
+
 window.deleteUser = deleteUser;
 
 function toggleSidebar() {
@@ -679,7 +690,7 @@ export {
     toggleHour,
     showCreateUserModal,
     hideCreateUserModal,
-    handleCreateUser,
+
     deleteUser,
     downloadPdf,
     handleSignatureUpload

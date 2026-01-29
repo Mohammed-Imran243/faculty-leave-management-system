@@ -719,5 +719,39 @@ class FPDF
     
     protected function _getfontpath() { return ''; }
 
+    function Open() {
+        $this->state = 1;
+    }
+
+    function GetStringWidth($s) {
+        $s = (string)$s;
+        $cw = &$this->CurrentFont['cw'];
+        $w = 0;
+        $l = strlen($s);
+        for($i=0;$i<$l;$i++)
+            $w += $cw[$s[$i]];
+        return $w*$this->FontSize/1000;
+    }
+
+    function Link($x, $y, $w, $h, $link) {
+        // Stub
+    }
+
+    function Text($x, $y, $txt) {
+        if($this->ColorFlag) $this->_out('q '.$this->TextColor.' ');
+        $txt2 = str_replace(')','\\)',str_replace('(','\\(',str_replace('\\','\\\\',$txt)));
+        $s = sprintf('BT %.2F %.2F Td (%s) Tj ET', $x*$this->k, ($this->h-$y)*$this->k, $txt2);
+        if($this->underline && $txt!='') $s .= ' '.$this->_dounderline($x,$y,$txt);
+        if($this->ColorFlag) $s .= ' Q';
+        $this->_out($s);
+    }
+
+    function Image($file, $x=null, $y=null, $w=0, $h=0, $type='', $link='') {
+        // Stub: Draw a box place holder
+        if($x===null) $x = $this->x;
+        if($y===null) $y = $this->y;
+        $this->Rect($x, $y, $w ? $w : 30, $h ? $h : 15);
+        $this->Text($x+2, $y+8, "[Sig]");
+    }
 }
 ?>

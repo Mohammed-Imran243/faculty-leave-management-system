@@ -38,30 +38,45 @@ function assertEq($actual, $expected, $msg) {
 // 1. Setup Users
 echo "--- Setting up Users ---\n";
 // Create Faculty
-$facultyEmail = "test_fac_" . time() . "@test.com";
+$ts = time();
+$facultyUsername = "fac_" . $ts;
+$facultyEmail = "test_fac_" . $ts . "@test.com";
 $res = req("/auth.php/register", "POST", [
-    "name" => "Test Faculty", "email" => $facultyEmail, "password" => "123456", "role" => "faculty", "department" => "CSE"
+    "name" => "Test Faculty", "username" => $facultyUsername, "email" => $facultyEmail, "password" => "123456", "role" => "faculty", "department" => "CSE"
 ]);
 assertEq($res['code'], 200, "Register Faculty");
 
 // Create HoD
-$hodEmail = "test_hod_" . time() . "@test.com";
+$ts = time();
+$hodUsername = "hod_" . $ts;
+$hodEmail = "test_hod_" . $ts . "@test.com";
 $res = req("/auth.php/register", "POST", [
-    "name" => "Test HoD", "email" => $hodEmail, "password" => "123456", "role" => "hod", "department" => "CSE"
+    "name" => "Test HoD", "username" => $hodUsername, "email" => $hodEmail, "password" => "123456", "role" => "hod", "department" => "CSE"
 ]);
 assertEq($res['code'], 200, "Register HoD");
 
 // Create Principal
-$princEmail = "test_princ_" . time() . "@test.com";
+$ts = time();
+$princUsername = "princ_" . $ts;
+$princEmail = "test_princ_" . $ts . "@test.com";
 $res = req("/auth.php/register", "POST", [
-    "name" => "Test Principal", "email" => $princEmail, "password" => "123456", "role" => "principal", "department" => "Administration"
+    "name" => "Test Principal", "username" => $princUsername, "email" => $princEmail, "password" => "123456", "role" => "principal", "department" => "Administration"
 ]);
 assertEq($res['code'], 200, "Register Principal");
+
+// Create Substitute
+$ts = time();
+$subUsername = "sub_" . $ts;
+$subEmail = "test_sub_" . $ts . "@test.com";
+$res = req("/auth.php/register", "POST", [
+    "name" => "Test Substitute", "username" => $subUsername, "email" => $subEmail, "password" => "123456", "role" => "faculty", "department" => "CSE"
+]);
+assertEq($res['code'], 200, "Register Substitute");
 
 
 // 2. Login & Tokens
 echo "\n--- Logging In ---\n";
-$res = req("/auth.php/login", "POST", ["email" => $facultyEmail, "password" => "123456"]);
+$res = req("/auth.php/login", "POST", ["username" => $facultyUsername, "password" => "123456"]);
 if (!isset($res['body']['token'])) {
     echo "Login Failed Response: ";
     print_r($res);
@@ -71,29 +86,23 @@ $facToken = $res['body']['token'];
 $facId = $res['body']['user']['id'];
 assertEq(isset($facToken), true, "Faculty Login");
 
-$res = req("/auth.php/login", "POST", ["email" => $hodEmail, "password" => "123456"]);
+$res = req("/auth.php/login", "POST", ["username" => $hodUsername, "password" => "123456"]);
 $hodToken = $res['body']['token'];
 assertEq(isset($hodToken), true, "HoD Login");
 
-$res = req("/auth.php/login", "POST", ["email" => $princEmail, "password" => "123456"]);
+$res = req("/auth.php/login", "POST", ["username" => $princUsername, "password" => "123456"]);
 $princToken = $res['body']['token'];
 assertEq(isset($princToken), true, "Principal Login");
 
+$res = req("/auth.php/login", "POST", ["username" => $subUsername, "password" => "123456"]);
+$subToken = $res['body']['token'];
+$subId = $res['body']['user']['id'];
+assertEq(isset($subToken), true, "Substitute Login");
+
 
 // 3. Get Faculty List for Substitution
-echo "\n--- Fetching Faculty List ---\n";
-$res = req("/users.php/faculty", "GET", null, $facToken);
-$facultyList = $res['body'];
-$subId = null;
-foreach($facultyList as $f) {
-    // Pick a faculty that isn't me (conceptually, though test user is fresh)
-    if ($f['id'] != $facId) {
-        $subId = $f['id'];
-        break;
-    }
-}
-if (!$subId) $subId = $facultyList[0]['id']; // Fallback
-echo "[PASS] Selected Substitute ID: $subId\n";
+// 3. Substitute Prep (Already logged in and ID obtained)
+echo "\n--- Using Substitute ID: $subId ---\n";
 
 
 // 4. Apply Hourly Leave with Substitution
@@ -117,6 +126,23 @@ if ($res['code'] !== 200) {
     exit(1);
 }
 assertEq($res['code'], 200, "Apply Hourly Leave");
+$leaveId = $res['body']['leave_id'] ?? null; 
+// Note: Apply response might not return ID in body, check leaves.php. 
+// apply_leave returns {message}.
+// We found it later via Pending list.
+
+// 4.5 Substitute Acceptance
+echo "\n--- Substitute Acceptance ---\n";
+$res = req("/leaves.php/substitutions/pending", "GET", null, $subToken);
+if (count($res['body']) > 0) {
+    $subReqId = $res['body'][0]['id'];
+    echo "[PASS] Found pending substitution request: $subReqId\n";
+    $res = req("/leaves.php/substitutions/$subReqId/respond", "PUT", ["status" => "ACCEPTED"], $subToken);
+    assertEq($res['code'], 200, "Substitute Accept");
+} else {
+    echo "[FAIL] No pending substitution requests found for sub\n";
+    exit(1);
+}
 
 // 5. HoD Approval
 echo "\n--- HoD Verification ---\n";
@@ -179,7 +205,7 @@ assertEq($finalLeave['principal_status'], 'Approved', "Final Principal Status");
 // We can use an admin user to delete them.
 echo "\n--- Cleanup ---\n";
 // Register Admin (or login if exists) - Schema has default admin
-$res = req("/auth.php/login", "POST", ["email" => "admin@college.edu", "password" => "admin123"]);
+$res = req("/auth.php/login", "POST", ["username" => "admin", "password" => "admin123"]);
 if ($res['code'] == 200) {
     $adminToken = $res['body']['token'];
     
