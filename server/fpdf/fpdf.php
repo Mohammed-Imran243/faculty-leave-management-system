@@ -697,6 +697,13 @@ class FPDF
         else $this->DrawColor = sprintf('%.3F %.3F %.3F RG', $r/255, $g/255, $b/255);
         if($this->page>0) $this->_out($this->DrawColor);
     }
+
+    function SetFillColor($r, $g=null, $b=null) {
+        if(($r==0 && $g==0 && $b==0) || $g===null) $this->FillColor = sprintf('%.3F g', $r/255);
+        else $this->FillColor = sprintf('%.3F %.3F %.3F rg', $r/255, $g/255, $b/255);
+        $this->ColorFlag = ($this->FillColor!=$this->TextColor);
+        if($this->page>0) $this->_out($this->FillColor);
+    }
     
     function SetLineWidth($width) {
         $this->LineWidth = $width;
@@ -719,6 +726,22 @@ class FPDF
     
     protected function _getfontpath() { return ''; }
 
+    function Close()
+    {
+        if($this->state==3)
+            return;
+        if($this->page==0)
+            $this->AddPage();
+        // Page footer
+        $this->InFooter = true;
+        $this->Footer();
+        $this->InFooter = false;
+        // Close page
+        $this->_endpage();
+        // Close document
+        $this->_enddoc();
+    }
+    
     function Open() {
         $this->state = 1;
     }

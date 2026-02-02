@@ -1,9 +1,8 @@
 <?php
 // Strict Error Handling Environment
-// Strict Error Handling Environment
-error_reporting(0);
-ini_set('display_errors', 0); // Do NOT display errors to output stream (corrupts PDF)
-// ini_set('display_startup_errors', 1);
+error_reporting(E_ALL);
+ini_set('display_errors', 1); // ENABLED FOR DEBUGGING
+ini_set('display_startup_errors', 1);
 
 // Start Output Buffering to capture any unwanted noise/errors
 ob_start();

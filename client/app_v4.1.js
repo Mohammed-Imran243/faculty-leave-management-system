@@ -106,7 +106,7 @@ function initDashboard() {
 
 async function fetchNotifications() {
     const notifs = await apiCall('/notifications.php/');
-    if (notifs) {
+    if (notifs && Array.isArray(notifs)) {
         state.notifications = notifs;
         updateNotificationUI();
     }
