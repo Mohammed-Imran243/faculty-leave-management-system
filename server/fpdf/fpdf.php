@@ -805,4 +805,3 @@ class FPDF
         $this->Text($x+2, $y+8, "[Sig]");
     }
 }
-}

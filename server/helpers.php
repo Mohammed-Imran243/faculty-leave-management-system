@@ -1,5 +1,5 @@
 <?php
-require_once 'config.php';
+// No config required - $conn is passed by caller (api/leaves.php etc.)
 
 function create_notification($conn, $user_id, $message) {
     try {

@@ -119,8 +119,12 @@ function get_pending_substitutions($conn, $user) {
 }
 
 function action_substitution($conn, $user, $id) {
-    $data = json_decode(file_get_contents("php://input")); // { "status": "ACCEPTED" or "REJECTED" }
-    
+    $data = json_decode(file_get_contents("php://input"));
+    if (!$data || !isset($data->status) || !in_array($data->status, ['ACCEPTED', 'REJECTED'])) {
+        http_response_code(400);
+        echo json_encode(["error" => "Invalid status"]);
+        return;
+    }
     // Check ownership
     $stmt = $conn->prepare("SELECT * FROM leave_substitutions WHERE id = ? AND substitute_user_id = ?");
     $stmt->execute([$id, $user['id']]);
@@ -250,9 +254,9 @@ function approve_principal($conn, $user, $id) {
      
      logAudit($conn, $user['id'], 'PRINCIPAL_ACTION', ['leave_id'=>$id, 'status'=>$data->status]);
 
-    // Generate PDF URL
-    $pdfUrl = "http://localhost/faculty-system/server/api/generate_pdf.php?id=" . $id;
-
+    // Generate PDF URL (base from config or current request)
+    $apiDir = dirname($_SERVER['SCRIPT_NAME'] ?? '/server/api');
+    $pdfUrl = ($base_url ?? '') . $apiDir . '/generate_pdf.php?id=' . $id;
     echo json_encode(["message" => "Principal Status Updated", "pdf_url" => $pdfUrl]);
 }
 

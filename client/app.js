@@ -19,12 +19,9 @@ function escapeHtml(text) {
 }
 
 // --- API Helper ---
-// --- API Helper ---
 async function apiCall(endpoint, method = 'GET', body = null) {
     const headers = { 'Content-Type': 'application/json' };
     if (state.token) headers['Authorization'] = `Bearer ${state.token}`;
-
-    console.log(`[DEBUG] Fetching: ${API_URL}${endpoint}`);
 
     try {
         const response = await fetch(`${API_URL}${endpoint}`, {
@@ -33,27 +30,20 @@ async function apiCall(endpoint, method = 'GET', body = null) {
             body: body ? JSON.stringify(body) : null
         });
 
-        // Handle Non-OK with JSON body
         if (response.status === 401 || response.status === 403) {
             const errData = await response.json().catch(() => ({ error: 'Unauthorized' }));
+            // Only redirect if not already on index and not just a failed login
             if (!window.location.pathname.endsWith('index.html') && !endpoint.includes('/login')) {
                 logout();
             }
             return errData;
         }
 
-        // Try parsing JSON
-        const text = await response.text();
-        try {
-            return JSON.parse(text);
-        } catch (e) {
-            console.error('[CRITICAL] API Response was not JSON:', text);
-            throw new Error('Server returned HTML/Invalid JSON. Check Console.');
-        }
-
+        return await response.json();
     } catch (error) {
         console.error('API Error:', error);
-        return { error: error.message };
+        // alert('Connection Error. Make sure XAMPP is running and URL is correct.');
+        return null;
     }
 }
 
@@ -351,13 +341,6 @@ async function renderView(viewId) {
             let pdfLink = '-';
 
             if (l.principal_status === 'Approved') {
-                // Keep the old action button if needed, or remove it. The user specifically asked for a mail icon.
-                // Merging logic: The user asked for a mail icon in a separate column? Or just generally?
-                // The implementation strategy was: "Add PDF column".
-
-                // actionHtml = `<button class="btn" style="width:auto; padding:5px 10px; background:#4f46e5" onclick="downloadPdf(${l.id})">📄 PDF</button>`;
-                // Let's keep the actionHtml pure (maybe for cancel later?) and put PDF in its own column as planned.
-
                 pdfLink = `<i class="fa fa-envelope" style="cursor:pointer; color:#4f46e5; font-size:1.2em" title="Download PDF" onclick="downloadPdf(${l.id})"></i>`;
             }
 
@@ -418,8 +401,6 @@ async function renderView(viewId) {
         } else {
             html += '<tr><td colspan="6" style="text-align:center">No pending requests</td></tr>';
         }
-        html += '</tbody></table></div>';
-        container.innerHTML = html;
         html += '</tbody></table></div>';
         container.innerHTML = html;
         return;
@@ -572,8 +553,8 @@ async function approveLeave(id, status) {
 
     const res = await apiCall(endpoint, 'PUT', { status });
     if (!res.error) {
-        if (res.pdf_url) {
-            window.open(res.pdf_url, '_blank');
+        if (res.pdf_url && role === 'principal') {
+            downloadPdf(id);
         }
         renderView('approvals');
     } else {
@@ -628,13 +609,12 @@ async function downloadPdf(id) {
     try {
         const response = await fetch(`${API_URL}/generate_pdf.php?id=${id}`, {
             method: 'GET',
-            headers: {
-                'Authorization': `Bearer ${state.token}`
-            }
+            headers: { 'Authorization': `Bearer ${state.token}` }
         });
 
         if (response.ok) {
-            const blob = await response.blob();
+            const data = await response.arrayBuffer();
+            const blob = new Blob([data], { type: 'application/pdf' });
             const url = window.URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
@@ -644,12 +624,17 @@ async function downloadPdf(id) {
             a.remove();
             window.URL.revokeObjectURL(url);
         } else {
-            const err = await response.text();
-            alert('Failed to download PDF: ' + err);
+            const text = await response.text();
+            let msg = text;
+            try {
+                const json = JSON.parse(text);
+                msg = json.message || json.error || text;
+            } catch (_) {}
+            alert('Failed to download PDF: ' + (msg || 'Unknown error'));
         }
     } catch (e) {
         console.error(e);
-        alert('Download failed');
+        alert('Download failed. Check your connection.');
     }
 }
 
@@ -665,10 +650,6 @@ window.handleApplyLeave = handleApplyLeave;
 window.actionSubstitution = actionSubstitution;
 window.approveLeave = approveLeave;
 window.toggleDurationMode = toggleDurationMode;
-window.toggleHour = toggleHour;
-window.showCreateUserModal = showCreateUserModal;
-window.hideCreateUserModal = hideCreateUserModal;
-window.handleCreateUser = handleCreateUser;
 window.toggleHour = toggleHour;
 window.showCreateUserModal = showCreateUserModal;
 window.hideCreateUserModal = hideCreateUserModal;

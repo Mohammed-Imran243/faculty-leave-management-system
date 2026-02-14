@@ -92,27 +92,10 @@
         </div>
     </div>
 
-    <script src="app_v4.1.js" type="module"></script>
-    <script type="module">
-        import { initDashboard } from './app_v4.1.js';
-        // We can access initDashboard because we exported it to window, but since we are in a module script, we can also just wait for the window property.
-        // However, standard DOMContentLoaded might fire before the module executes.
-        // Module scripts are deferred by default, so they run after parsing.
-        
-        // Let's rely on the window export, but due to module timing, we should use window.onload or simply call it if it exists.
-        // Actually, since app.js attaches itself to window, we can just use a regular script that waits for it? 
-        // No, simplest way: Just use the same pattern as index.html
-        
-        // Better yet, let's just trigger it from within app.js if we detect we are on the dashboard.
-    </script>
+    <script src="app.js" type="module"></script>
     <script>
-        // Wait for module to load and expose initDashboard
         window.addEventListener('load', () => {
-            if (window.initDashboard) {
-                initDashboard();
-            } else {
-                 console.error("initDashboard not found even after load");
-            }
+            if (window.initDashboard) window.initDashboard();
         });
     </script>
 </body>

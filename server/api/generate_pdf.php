@@ -1,197 +1,184 @@
 <?php
 declare(strict_types=1);
-
 /**
- * =========================================================
- * CAHCET Faculty Leave Management System
- * Secure PDF Generator (FINAL – STABLE)
- * =========================================================
+ * CAHCET Faculty Leave Management System - PDF Generator
+ * Uses mpdf for reliable PDF output.
  */
-
 error_reporting(0);
 ini_set('display_errors', '0');
 
-// Buffering to catch include whitespace
 ob_start();
 
-/* ---------------- REQUIRED FILES ---------------- */
-require_once '../config.php';
-require_once '../SimpleJWT.php';
-require_once '../fpdf/fpdf.php';
-require_once '../audit.php';
+require_once __DIR__ . '/../vendor/autoload.php';
+require_once __DIR__ . '/../config.php';
+require_once __DIR__ . '/../SimpleJWT.php';
+require_once __DIR__ . '/../audit.php';
 
-// Clean any accidental output from includes
-if (ob_get_length()) ob_clean();
+ob_clean();
 
 try {
-
-    /* ---------------- AUTHENTICATION ---------------- */
     $token = JWT::get_bearer_token();
-    if (!$token) {
-        throw new Exception('Unauthorized', 401);
-    }
+    if (!$token) throw new Exception('Unauthorized', 401);
 
     $user = JWT::decode($token);
-    if (!$user) {
-        throw new Exception('Invalid token', 401);
-    }
+    if (!$user) throw new Exception('Invalid token', 401);
 
-    /* ---------------- INPUT VALIDATION ---------------- */
     $leaveId = isset($_GET['id']) ? (int)$_GET['id'] : 0;
-    if ($leaveId <= 0) {
-        throw new Exception('Invalid Leave ID', 400);
-    }
+    if ($leaveId <= 0) throw new Exception('Invalid Leave ID', 400);
 
-    /* ---------------- FETCH LEAVE DATA ---------------- */
     $stmt = $conn->prepare(
-        "SELECT l.*, u.name, u.role, u.department
-         FROM leave_requests l
-         JOIN users u ON l.user_id = u.id
-         WHERE l.id = ?"
+        "SELECT l.*, u.name, u.role, u.department FROM leave_requests l
+         JOIN users u ON l.user_id = u.id WHERE l.id = ?"
     );
     $stmt->execute([$leaveId]);
     $leave = $stmt->fetch(PDO::FETCH_ASSOC);
 
-    if (!$leave) {
-        throw new Exception('Leave request not found', 404);
-    }
+    if (!$leave) throw new Exception('Leave request not found', 404);
 
-    /* ---------------- ACCESS CONTROL ---------------- */
-    $canView =
-        $user['id'] == $leave['user_id'] ||
-        in_array($user['role'], ['admin', 'principal']) ||
-        ($user['role'] === 'hod' && $user['department'] === $leave['department']);
+    $canView = $user['id'] == $leave['user_id']
+        || in_array($user['role'], ['admin', 'principal'])
+        || ($user['role'] === 'hod' && $user['department'] === $leave['department']);
 
-    if (!$canView) {
-        throw new Exception('Access denied', 403);
-    }
+    if (!$canView) throw new Exception('Access denied', 403);
 
-    /* ---------------- FETCH SUBSTITUTIONS ---------------- */
-    $stmt = $conn->prepare(
-        "SELECT ls.*, u.name AS sub_name
-         FROM leave_substitutions ls
-         JOIN users u ON ls.substitute_user_id = u.id
-         WHERE ls.leave_request_id = ?"
-    );
-    $stmt->execute([$leaveId]);
-    $subs = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-    /* ---------------- FETCH APPROVALS ---------------- */
-    $stmt = $conn->prepare(
-        "SELECT * FROM approvals WHERE leave_request_id = ?"
-    );
-    $stmt->execute([$leaveId]);
-    $approvals = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-    $hodApproval = null;
-    $principalApproval = null;
-
-    foreach ($approvals as $app) {
-        if ($app['role_at_time'] === 'hod') {
-            $hodApproval = $app;
-        }
-        if ($app['role_at_time'] === 'principal') {
-            $principalApproval = $app;
-        }
-    }
-
-    /* ---------------- HELPER: SIGNER INFO ---------------- */
-    function getSignerInfo(PDO $conn, ?array $approval): array
-    {
-        if (!$approval) return ['name' => '', 'signature_path' => null];
-
+    $subs = [];
+    $approvals = [];
+    try {
         $stmt = $conn->prepare(
-            "SELECT name, signature_path FROM users WHERE id = ?"
+            "SELECT ls.*, u.name AS sub_name FROM leave_substitutions ls
+             JOIN users u ON ls.substitute_user_id = u.id WHERE ls.leave_request_id = ?"
         );
-        $stmt->execute([$approval['approver_id']]);
-        return $stmt->fetch(PDO::FETCH_ASSOC) ?: ['name' => '', 'signature_path' => null];
+        $stmt->execute([$leaveId]);
+        $subs = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    } catch (Throwable $e) {}
+    try {
+        $stmt = $conn->prepare("SELECT * FROM approvals WHERE leave_request_id = ? ORDER BY created_at ASC");
+        $stmt->execute([$leaveId]);
+        $approvals = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    } catch (Throwable $e) {}
+
+    $hodApproval = $principalApproval = null;
+    foreach ($approvals as $app) {
+        if ($app['role_at_time'] === 'hod') $hodApproval = $app;
+        if ($app['role_at_time'] === 'principal') $principalApproval = $app;
     }
 
-    $hodInfo = getSignerInfo($conn, $hodApproval);
-    $princInfo = getSignerInfo($conn, $principalApproval);
-
-    /* ---------------- PDF CLASS ---------------- */
-    class PDF extends FPDF
-    {
-        function Header()
-        {
-            $this->SetFont('Times', 'B', 14);
-            $this->Cell(0, 6, 'C. ABDUL HAKEEM COLLEGE OF ENGINEERING & TECHNOLOGY', 0, 1, 'C');
-            $this->SetFont('Times', '', 10);
-            $this->Cell(0, 5, 'Melvisharam - 632 509', 0, 1, 'C');
-            $this->Ln(3);
-            $this->SetFont('Times', 'B', 13);
-            $this->Cell(0, 6, 'LEAVE APPLICATION', 0, 1, 'C');
-            $this->Ln(5);
-            $this->Line(10, $this->GetY(), 200, $this->GetY());
-            $this->Ln(6);
-        }
-
-        function Footer()
-        {
-            $this->SetY(-15);
-            $this->SetFont('Times', 'I', 8);
-            $this->Cell(0, 10, 'Generated by CAHCET Faculty Leave Management System', 0, 0, 'C');
-        }
+    function getSignerName(PDO $conn, ?array $approval): string {
+        if (!$approval) return '';
+        try {
+            $stmt = $conn->prepare("SELECT name FROM users WHERE id = ?");
+            $stmt->execute([$approval['approver_id']]);
+            $row = $stmt->fetch(PDO::FETCH_ASSOC);
+            return $row ? htmlspecialchars($row['name']) : '';
+        } catch (Throwable $e) { return ''; }
     }
 
-    /* ---------------- CREATE PDF ---------------- */
-    $pdf = new PDF();
-    $pdf->SetMargins(15, 15, 15);
-    $pdf->SetAutoPageBreak(true, 15);
-    $pdf->AddPage();
-    $pdf->SetFont('Times', '', 12);
+    $hodName = getSignerName($conn, $hodApproval);
+    $princName = getSignerName($conn, $principalApproval);
 
-    /* ---------------- BODY CONTENT ---------------- */
-    $pdf->Cell(0, 8, 'Respected Sir,', 0, 1);
+    $reason = htmlspecialchars(preg_replace('/\s+/', ' ', trim($leave['reason'] ?? '')));
+    $leaveType = htmlspecialchars($leave['leave_type'] ?? '');
+    $dept = htmlspecialchars($leave['department'] ?? '-');
+    $applicant = htmlspecialchars($leave['name'] ?? '');
 
-    $leaveType = $leave['leave_type'];
-
-    if ($leave['duration_type'] === 'Hours') {
-        $duration = $leave['selected_hours'] . ' Hour(s)';
-        $dateStr = 'on ' . date('d-m-Y', strtotime($leave['start_date']));
+    if (!empty($leave['duration_type']) && $leave['duration_type'] === 'Hours') {
+        $duration = htmlspecialchars($leave['selected_hours'] ?? '-') . ' Hour(s)';
+        $dateStr = date('d-m-Y', strtotime($leave['start_date']));
     } else {
         $d1 = new DateTime($leave['start_date']);
         $d2 = new DateTime($leave['end_date']);
         $days = $d1->diff($d2)->days + 1;
         $duration = $days . ' Day(s)';
-        $dateStr =
-            'from ' . date('d-m-Y', strtotime($leave['start_date'])) .
-            ' to ' . date('d-m-Y', strtotime($leave['end_date']));
+        $dateStr = date('d-m-Y', strtotime($leave['start_date'])) . ' to ' . date('d-m-Y', strtotime($leave['end_date']));
     }
 
-    $reason = preg_replace('/\s+/', ' ', trim($leave['reason']));
+    $hodStatus = htmlspecialchars($leave['hod_status'] ?? 'Pending');
+    $princStatus = htmlspecialchars($leave['principal_status'] ?? 'Pending');
+    $rejReason = htmlspecialchars($leave['rejection_reason'] ?? '');
 
-    $text = "Kindly grant me $leaveType leave for $duration $dateStr. Reason: $reason";
-    $pdf->MultiCell(0, 7, $text);
+    $html = '
+<style>
+body { font-family: DejaVu Sans, sans-serif; font-size: 11pt; }
+h1 { text-align: center; font-size: 16pt; margin-bottom: 2px; }
+h2 { text-align: center; font-size: 10pt; color: #555; margin-top: 0; margin-bottom: 15px; }
+h3 { font-size: 12pt; background: #eee; padding: 5px; margin: 15px 0 8px 0; }
+table.info { width: 100%; border-collapse: collapse; }
+table.info td { padding: 3px 0; }
+table.info td:first-child { font-weight: bold; width: 140px; }
+.footer { font-size: 8pt; color: #888; text-align: center; margin-top: 25px; }
+</style>
 
-    $pdf->Ln(8);
-    $pdf->Cell(0, 8, 'Thanking you,', 0, 1);
-    $pdf->Ln(15);
-    $pdf->Cell(0, 8, 'Yours faithfully,', 0, 1);
-    $pdf->Cell(0, 8, $leave['name'], 0, 1);
+<h1>C. ABDUL HAKEEM COLLEGE OF ENGINEERING & TECHNOLOGY</h1>
+<h2>Melvisharam - 632 509</h2>
+<h2 style="border-bottom: 1px solid #333; padding-bottom: 8px;">LEAVE APPLICATION</h2>
 
-    /* ---------------- AUDIT ---------------- */
+<h3>1. APPLICANT & LEAVE DETAILS</h3>
+<table class="info">
+<tr><td>Leave ID:</td><td>#' . $leaveId . '</td></tr>
+<tr><td>Applicant:</td><td>' . $applicant . '</td></tr>
+<tr><td>Department:</td><td>' . $dept . '</td></tr>
+<tr><td>Leave Type:</td><td>' . $leaveType . '</td></tr>
+<tr><td>Duration:</td><td>' . $duration . '</td></tr>
+<tr><td>Date(s):</td><td>' . $dateStr . '</td></tr>
+<tr><td>Reason:</td><td>' . ($reason ?: '-') . '</td></tr>
+</table>
+
+<h3>2. APPLICATION</h3>
+<p>Respected Sir,</p>
+<p>Kindly grant me ' . $leaveType . ' leave for ' . $duration . ' (' . $dateStr . '). Reason: ' . ($reason ?: 'As stated above.') . '</p>
+<p>Thanking you,</p>
+<p><strong>Yours faithfully,</strong><br>' . $applicant . '</p>';
+
+    if (!empty($subs)) {
+        $html .= '<h3>3. SUBSTITUTION ARRANGEMENTS</h3><ul>';
+        foreach ($subs as $s) {
+            $st = htmlspecialchars($s['status'] ?? 'PENDING');
+            $sn = htmlspecialchars($s['sub_name'] ?? '-');
+            $html .= '<li>Date: ' . date('d-m-Y', strtotime($s['date'])) . ' | Hour: ' . (int)($s['hour_slot'] ?? 0) . ' | Substitute: ' . $sn . ' | Status: ' . $st . '</li>';
+        }
+        $html .= '</ul>';
+    }
+
+    $html .= '
+<h3>4. APPROVAL STATUS</h3>
+<table class="info">
+<tr><td>HoD Status:</td><td>' . $hodStatus . '</td></tr>' .
+($hodName ? '<tr><td>HoD Approved By:</td><td>' . $hodName . '</td></tr>' : '') . '
+<tr><td>Principal Status:</td><td>' . $princStatus . '</td></tr>' .
+($princName ? '<tr><td>Principal Approved By:</td><td>' . $princName . '</td></tr>' : '') . '
+</table>';
+
+    if ($rejReason) {
+        $html .= '<p><em>Rejection Note: ' . $rejReason . '</em></p>';
+    }
+
+    $html .= '<p class="footer">CAHCET Faculty Leave Management System | Generated: ' . date('d-m-Y H:i:s') . '</p>';
+
+    $mpdf = new \Mpdf\Mpdf(['mode' => 'utf-8', 'format' => 'A4', 'margin_top' => 15, 'margin_bottom' => 18]);
+    $mpdf->WriteHTML($html);
+
     logAudit($conn, $user['id'], 'PDF_DOWNLOAD', ['leave_id' => $leaveId]);
 
-    /* ---------------- OUTPUT HEADERS ---------------- */
-    header('Content-Type: application/pdf');
-    header('Content-Disposition: inline; filename="Leave_Application_' . $leaveId . '.pdf"');
-    header('Cache-Control: private, max-age=0, must-revalidate');
-    header('Pragma: public');
+    $pdfContent = $mpdf->OutputBinaryData();
+    $filename = 'Leave_Application_' . $leaveId . '.pdf';
 
-    $pdf->Output('I');
+    while (ob_get_level()) ob_end_clean();
+
+    header('Content-Type: application/pdf');
+    header('Content-Disposition: attachment; filename="' . $filename . '"');
+    header('Content-Length: ' . strlen($pdfContent));
+    header('Cache-Control: private, no-cache, must-revalidate');
+    echo $pdfContent;
     exit;
 
 } catch (Throwable $e) {
-
-    error_log('[PDF ERROR] ' . $e->getMessage());
-
-    http_response_code(500);
-    header('Content-Type: application/json');
-    echo json_encode([
-        'error' => 'PDF generation failed',
-        'message' => $e->getMessage()
-    ]);
+    while (ob_get_level()) ob_end_clean();
+    error_log('[PDF ERROR] ' . $e->getMessage() . ' in ' . $e->getFile() . ':' . $e->getLine());
+    if (!headers_sent()) {
+        $code = (is_int($e->getCode()) && $e->getCode() >= 400 && $e->getCode() < 600) ? $e->getCode() : 500;
+        http_response_code($code);
+        header('Content-Type: application/json; charset=utf-8');
+    }
+    echo json_encode(['error' => 'PDF generation failed', 'message' => $e->getMessage()]);
     exit;
 }

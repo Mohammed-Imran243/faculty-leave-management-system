@@ -27,4 +27,3 @@ function logAudit($conn, $userId, $action, $details = '') {
         error_log("Audit Log Failed: " . $e->getMessage());
     }
 }
-}

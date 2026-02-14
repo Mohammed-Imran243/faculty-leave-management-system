@@ -61,8 +61,9 @@ function login($conn) {
         return;
     }
 
-    $stmt = $conn->prepare("SELECT * FROM users WHERE username = :username");
-    $stmt->bindParam(':username', $data->username);
+    // Accept login by username OR email
+    $stmt = $conn->prepare("SELECT * FROM users WHERE username = :login OR email = :login");
+    $stmt->bindParam(':login', $data->username);
     $stmt->execute();
     $user = $stmt->fetch(PDO::FETCH_ASSOC);
 
@@ -91,7 +92,8 @@ function login($conn) {
             ]
         ]);
     } else {
-        logAudit($conn, ($user['id'] ?? null), 'LOGIN_FAILED', ['username' => $data->username]);
+        $uid = ($user && isset($user['id'])) ? $user['id'] : null;
+        logAudit($conn, $uid, 'LOGIN_FAILED', ['username' => $data->username]);
         http_response_code(401);
         echo json_encode(["error" => "Invalid credentials"]);
     }
