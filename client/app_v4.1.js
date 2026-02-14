@@ -624,9 +624,26 @@ async function deleteUser(id) {
 }
 
 async function downloadPdf(id) {
-    if (!state.token) return;
+    console.log(`[DEBUG] downloadPdf called for ID: ${id}`);
+    if (!state.token) {
+        console.error('[DEBUG] No token found');
+        return;
+    }
+
+    // Direct Open Method - Bypass Blob/Fetch entirely
+    // This relies on the browser to handle the file download/display
+    // We attach the token to the URL so the server can validate it (if we change server to accept GET token)
+    // BUT generate_pdf.php expects Bearer header.
+
+    // WORKAROUND: We will use the fetch to get the blob, but then immediately 
+    // try to open it as a straightforward Object URL without any fancy anchor tag stuff first.
+    // If that fails, we will try the "download" attribute approach again but simpler.
+
     try {
-        const response = await fetch(`${API_URL}/generate_pdf.php?id=${id}`, {
+        const url = `${API_URL}/generate_pdf.php?id=${id}`;
+        console.log(`[DEBUG] Fetching PDF from: ${url}`);
+
+        const response = await fetch(url, {
             method: 'GET',
             headers: {
                 'Authorization': `Bearer ${state.token}`
@@ -636,20 +653,25 @@ async function downloadPdf(id) {
         if (response.ok) {
             const blob = await response.blob();
             const url = window.URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `Leave_Application_${id}.pdf`;
-            document.body.appendChild(a);
-            a.click();
-            a.remove();
-            window.URL.revokeObjectURL(url);
+
+            // SUPER SIMPLE: Just open it. Let browser decide.
+            const win = window.open(url, '_blank');
+            if (!win) {
+                // Popup blocked? Fallback to anchor
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `Leave_Application_${id}.pdf`;
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+            }
         } else {
             const err = await response.text();
-            alert('Failed to download PDF: ' + err);
+            alert('Failed: ' + err);
         }
     } catch (e) {
         console.error(e);
-        alert('Download failed');
+        alert('Error: ' + e.message);
     }
 }
 

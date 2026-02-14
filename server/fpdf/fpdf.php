@@ -688,7 +688,35 @@ class FPDF
         $this->_out('endstream');
     }
     
-    // Image, Link support omitted for space, added back if needed
+    function SetMargins($left, $top, $right=null) {
+        $this->SetLeftMargin($left);
+        $this->SetTopMargin($top);
+        if($right!==null) $this->SetRightMargin($right);
+    }
+    
+    function SetLeftMargin($margin) {
+        $this->lMargin = $margin;
+        if($this->page>0 && $this->x<$margin) $this->x = $margin;
+    }
+
+    function SetTopMargin($margin) {
+        $this->tMargin = $margin;
+    }
+
+    function SetRightMargin($margin) {
+        $this->rMargin = $margin;
+    }
+
+    function SetAutoPageBreak($auto, $margin=0) {
+        $this->AutoPageBreak = $auto;
+        $this->bMargin = $margin;
+        $this->PageBreakTrigger = $this->h-$this->bMargin;
+    }
+
+    function Line($x1, $y1, $x2, $y2) {
+        $this->_out(sprintf('%.2F %.2F m %.2F %.2F l S', $x1*$this->k, ($this->h-$y1)*$this->k, $x2*$this->k, ($this->h-$y2)*$this->k));
+    }
+
     function Error($msg) { throw new Exception('FPDF error: '.$msg); }
     
     // Added back basic drawing functions required by generate_pdf
@@ -777,4 +805,4 @@ class FPDF
         $this->Text($x+2, $y+8, "[Sig]");
     }
 }
-?>
+}

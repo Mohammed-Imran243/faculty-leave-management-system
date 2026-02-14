@@ -1,333 +1,197 @@
 <?php
-// Strict Error Handling Environment
-// Strict Error Handling Environment
-error_reporting(0);
-ini_set('display_errors', 0); // Do NOT display errors to output stream (corrupts PDF)
-// ini_set('display_startup_errors', 1);
+declare(strict_types=1);
 
-// Start Output Buffering to capture any unwanted noise/errors
+/**
+ * =========================================================
+ * CAHCET Faculty Leave Management System
+ * Secure PDF Generator (FINAL – STABLE)
+ * =========================================================
+ */
+
+error_reporting(0);
+ini_set('display_errors', '0');
+
+// Buffering to catch include whitespace
 ob_start();
 
+/* ---------------- REQUIRED FILES ---------------- */
 require_once '../config.php';
 require_once '../SimpleJWT.php';
 require_once '../fpdf/fpdf.php';
 require_once '../audit.php';
 
-// Clean buffer after includes to ensure no whitespace/notices found their way in
+// Clean any accidental output from includes
 if (ob_get_length()) ob_clean();
 
 try {
-    // 1. Auth Check
+
+    /* ---------------- AUTHENTICATION ---------------- */
     $token = JWT::get_bearer_token();
-    if (!$token) throw new Exception("Unauthorized: No token provided", 401);
-    
+    if (!$token) {
+        throw new Exception('Unauthorized', 401);
+    }
+
     $user = JWT::decode($token);
-    if (!$user) throw new Exception("Unauthorized: Invalid token", 401);
+    if (!$user) {
+        throw new Exception('Invalid token', 401);
+    }
 
-    // 2. Validate Inputs
-    $leaveId = isset($_GET['id']) ? intval($_GET['id']) : 0;
-    if ($leaveId <= 0) throw new Exception("Invalid Leave ID", 400);
+    /* ---------------- INPUT VALIDATION ---------------- */
+    $leaveId = isset($_GET['id']) ? (int)$_GET['id'] : 0;
+    if ($leaveId <= 0) {
+        throw new Exception('Invalid Leave ID', 400);
+    }
 
-    // 3. Fetch Data
-    $stmt = $conn->prepare("SELECT l.*, u.name, u.role, u.department, u.email 
-                            FROM leave_requests l 
-                            JOIN users u ON l.user_id = u.id 
-                            WHERE l.id = ?");
+    /* ---------------- FETCH LEAVE DATA ---------------- */
+    $stmt = $conn->prepare(
+        "SELECT l.*, u.name, u.role, u.department
+         FROM leave_requests l
+         JOIN users u ON l.user_id = u.id
+         WHERE l.id = ?"
+    );
     $stmt->execute([$leaveId]);
     $leave = $stmt->fetch(PDO::FETCH_ASSOC);
 
-    if (!$leave) throw new Exception("Leave Request not found", 404);
+    if (!$leave) {
+        throw new Exception('Leave request not found', 404);
+    }
 
-    // 4. Access Control
-    $canView = ($user['id'] == $leave['user_id']) || 
-               ($user['role'] == 'principal') || 
-               ($user['role'] == 'admin') || 
-               ($user['role'] == 'hod' && $user['department'] == $leave['department']);
+    /* ---------------- ACCESS CONTROL ---------------- */
+    $canView =
+        $user['id'] == $leave['user_id'] ||
+        in_array($user['role'], ['admin', 'principal']) ||
+        ($user['role'] === 'hod' && $user['department'] === $leave['department']);
 
-    if (!$canView) throw new Exception("Access Denied: You do not have permission to view this document.", 403);
+    if (!$canView) {
+        throw new Exception('Access denied', 403);
+    }
 
-    // 5. Fetch Additional Data
-    $stmt = $conn->prepare("SELECT ls.*, u.name as sub_name 
-                            FROM leave_substitutions ls 
-                            JOIN users u ON ls.substitute_user_id = u.id 
-                            WHERE ls.leave_request_id = ?");
+    /* ---------------- FETCH SUBSTITUTIONS ---------------- */
+    $stmt = $conn->prepare(
+        "SELECT ls.*, u.name AS sub_name
+         FROM leave_substitutions ls
+         JOIN users u ON ls.substitute_user_id = u.id
+         WHERE ls.leave_request_id = ?"
+    );
     $stmt->execute([$leaveId]);
     $subs = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-    $stmt = $conn->prepare("SELECT * FROM approvals WHERE leave_request_id = ?");
+    /* ---------------- FETCH APPROVALS ---------------- */
+    $stmt = $conn->prepare(
+        "SELECT * FROM approvals WHERE leave_request_id = ?"
+    );
     $stmt->execute([$leaveId]);
     $approvals = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
     $hodApproval = null;
     $principalApproval = null;
-    foreach($approvals as $app) {
-        if ($app['role_at_time'] == 'hod') $hodApproval = $app;
-        if ($app['role_at_time'] == 'principal') $principalApproval = $app;
+
+    foreach ($approvals as $app) {
+        if ($app['role_at_time'] === 'hod') {
+            $hodApproval = $app;
+        }
+        if ($app['role_at_time'] === 'principal') {
+            $principalApproval = $app;
+        }
     }
 
-    // Helper: Get Signer Info
-    function getSignerInfo($conn, $app) {
-        if (!$app) return ['name'=>'', 'signature_path'=>null];
-        $stmt = $conn->prepare("SELECT name, signature_path FROM users WHERE id = ?");
-        $stmt->execute([$app['approver_id']]);
-        $res = $stmt->fetch(PDO::FETCH_ASSOC);
-        return $res ? $res : ['name'=>'', 'signature_path'=>null];
+    /* ---------------- HELPER: SIGNER INFO ---------------- */
+    function getSignerInfo(PDO $conn, ?array $approval): array
+    {
+        if (!$approval) return ['name' => '', 'signature_path' => null];
+
+        $stmt = $conn->prepare(
+            "SELECT name, signature_path FROM users WHERE id = ?"
+        );
+        $stmt->execute([$approval['approver_id']]);
+        return $stmt->fetch(PDO::FETCH_ASSOC) ?: ['name' => '', 'signature_path' => null];
     }
-    
+
     $hodInfo = getSignerInfo($conn, $hodApproval);
     $princInfo = getSignerInfo($conn, $principalApproval);
-    $hodName = $hodInfo['name'];
-    $princName = $princInfo['name'];
-    $hodSigPath = $hodInfo['signature_path'];
-    $princSigPath = $princInfo['signature_path'];
 
-    // 6. PDF Generation
-    class PDF extends FPDF {
-        function Header() {
-            $this->SetFont('Arial','B',14);
-            $this->Cell(0,5,'C. ABDUL HAKEEM COLLEGE OF',0,1,'C');
-            $this->Cell(0,5,'ENGINEERING & TECHNOLOGY',0,1,'C');
-            $this->SetFont('Arial','',10);
-            $this->Cell(0,5,'Hbkeem Nagar, Melvisharam - 632 509.',0,1,'C');
+    /* ---------------- PDF CLASS ---------------- */
+    class PDF extends FPDF
+    {
+        function Header()
+        {
+            $this->SetFont('Times', 'B', 14);
+            $this->Cell(0, 6, 'C. ABDUL HAKEEM COLLEGE OF ENGINEERING & TECHNOLOGY', 0, 1, 'C');
+            $this->SetFont('Times', '', 10);
+            $this->Cell(0, 5, 'Melvisharam - 632 509', 0, 1, 'C');
+            $this->Ln(3);
+            $this->SetFont('Times', 'B', 13);
+            $this->Cell(0, 6, 'LEAVE APPLICATION', 0, 1, 'C');
             $this->Ln(5);
-            $this->SetFont('Arial','BU',12);
-            $this->Cell(0,10,'LEAVE APPLICATION',0,1,'C');
-            $this->Ln(5);
+            $this->Line(10, $this->GetY(), 200, $this->GetY());
+            $this->Ln(6);
         }
-        function Footer() {
+
+        function Footer()
+        {
             $this->SetY(-15);
-            $this->SetFont('Arial','I',8);
-            $this->Cell(0,10,'Generated by Faculty Management System',0,0,'C');
-        }
-        // Override Error handler to throw Exception instead of die()
-        function Error($msg) {
-            throw new Exception("PDF Generation Error: " . $msg);
+            $this->SetFont('Times', 'I', 8);
+            $this->Cell(0, 10, 'Generated by CAHCET Faculty Leave Management System', 0, 0, 'C');
         }
     }
 
+    /* ---------------- CREATE PDF ---------------- */
     $pdf = new PDF();
+    $pdf->SetMargins(15, 15, 15);
+    $pdf->SetAutoPageBreak(true, 15);
     $pdf->AddPage();
-    $pdf->SetFont('Arial','',12);
+    $pdf->SetFont('Times', '', 12);
 
-    // Layout Logic
-    $yStart = $pdf->GetY();
-    $xLeft = 10; $xRight = 110;
+    /* ---------------- BODY CONTENT ---------------- */
+    $pdf->Cell(0, 8, 'Respected Sir,', 0, 1);
 
-    // From
-    $pdf->SetXY($xLeft, $yStart);
-    $pdf->SetFont('Arial','B',11);
-    $pdf->Cell(80,5,'From',0,1);
-    $pdf->SetFont('Arial','',11);
-    $pdf->Cell(80,5,$leave['name'],0,1);
-    $pdf->Cell(80,5,'Assistant Professor',0,1);
-    $pdf->Cell(80,5,'Department of '.$leave['department'],0,1);
+    $leaveType = $leave['leave_type'];
 
-    // To
-    $pdf->SetXY($xRight, $yStart);
-    $pdf->SetFont('Arial','B',11);
-    $pdf->Cell(80,5,'To',0,1);
-    $pdf->SetFont('Arial','',11);
-    $pdf->Cell(80,5,'The Correspondent / Principal',0,1);
-    $pdf->Cell(80,5,'C. Abdul Hakeem College of Engg & Tech',0,1);
-    $pdf->Cell(80,5,'Melvisharam - 632 509.',0,1);
-
-    $pdf->SetY($yStart + 30);
-
-    // Through HoD
-    $pdf->Cell(30,8,'Through HoD:',0,0);
-    $pdf->SetFont('Arial','I',11);
-    $pdf->Cell(60,8, ($hodName ? $hodName : 'Pending Signature'), 'B', 0);
-    $pdf->SetFont('Arial','',11);
-    $pdf->Cell(70,8, 'Date: '.date('d-m-Y'), 0, 1, 'R');
-    $pdf->Ln(5);
-
-    // Body
-    $pdf->Cell(0,8, 'Sir,', 0, 1);
-    $pdf->Write(7, 'Kindly grant me ');
-    $pdf->SetFont('Arial','B',11);
-    $pdf->Write(7, $leave['leave_type']);
-    $pdf->SetFont('Arial','',11);
-    $pdf->Write(7, ' leave for ');
-    $pdf->SetFont('Arial','B',11);
-
-    if ($leave['duration_type'] == 'Hours') {
-        $dur = $leave['selected_hours'] . ' Hour(s)';
+    if ($leave['duration_type'] === 'Hours') {
+        $duration = $leave['selected_hours'] . ' Hour(s)';
+        $dateStr = 'on ' . date('d-m-Y', strtotime($leave['start_date']));
     } else {
         $d1 = new DateTime($leave['start_date']);
         $d2 = new DateTime($leave['end_date']);
-        $diff = $d1->diff($d2)->days + 1;
-        $dur = $diff . ' Day(s)';
+        $days = $d1->diff($d2)->days + 1;
+        $duration = $days . ' Day(s)';
+        $dateStr =
+            'from ' . date('d-m-Y', strtotime($leave['start_date'])) .
+            ' to ' . date('d-m-Y', strtotime($leave['end_date']));
     }
 
-    $pdf->Write(7, $dur);
-    $pdf->SetFont('Arial','',11);
-    $pdf->Write(7, ' on/from ');
-    $pdf->SetFont('Arial','B',11);
-    $pdf->Write(7, date('d-m-Y', strtotime($leave['start_date'])));
-    $pdf->SetFont('Arial','',11);
-    $pdf->Write(7, ' to ');
-    $pdf->SetFont('Arial','B',11);
-    $pdf->Write(7, date('d-m-Y', strtotime($leave['end_date'])));
-    $pdf->SetFont('Arial','',11);
-    $pdf->Write(7, '.');
-    $pdf->Ln(10);
+    $reason = preg_replace('/\s+/', ' ', trim($leave['reason']));
 
-    $pdf->Write(7, 'Reason: ');
-    $pdf->SetFont('Arial','I',11);
-    $pdf->Write(7, $leave['reason']);
-    $pdf->Ln(12);
+    $text = "Kindly grant me $leaveType leave for $duration $dateStr. Reason: $reason";
+    $pdf->MultiCell(0, 7, $text);
 
-    $pdf->SetX(120);
-    $pdf->Cell(70, 5, 'Yours faithfully,', 0, 1, 'C');
+    $pdf->Ln(8);
+    $pdf->Cell(0, 8, 'Thanking you,', 0, 1);
     $pdf->Ln(15);
-    $pdf->SetX(120);
-    $pdf->Cell(70, 5, '(Signature of Faculty)', 'T', 1, 'C');
-    $pdf->Ln(10);
+    $pdf->Cell(0, 8, 'Yours faithfully,', 0, 1);
+    $pdf->Cell(0, 8, $leave['name'], 0, 1);
 
-    // Allocation Table
-    $pdf->SetFont('Arial','B',11);
-    $pdf->Cell(0, 10, 'Class Arrangements Made:', 0, 1);
-    
-    // Check if SetFillColor exists (Validation for library integrity)
-    if (!method_exists($pdf, 'SetFillColor')) {
-        throw new Exception("FPDF Library Version Mismatch: SetFillColor method missing.");
-    }
+    /* ---------------- AUDIT ---------------- */
+    logAudit($conn, $user['id'], 'PDF_DOWNLOAD', ['leave_id' => $leaveId]);
 
-    $pdf->SetFont('Arial','B',10);
-    $pdf->SetFillColor(240,240,240);
-    $pdf->Cell(30, 8, 'Date', 1, 0, 'C', true);
-    $pdf->Cell(20, 8, 'Hour', 1, 0, 'C', true);
-    $pdf->Cell(70, 8, 'Substitute (Faculty)', 1, 0, 'C', true);
-    $pdf->Cell(30, 8, 'Status', 1, 0, 'C', true);
-    $pdf->Cell(30, 8, 'Initials', 1, 1, 'C', true);
-
-    $pdf->SetFont('Arial','',10);
-    if (count($subs) > 0) {
-        foreach($subs as $sub) {
-            $pdf->Cell(30, 8, date('d.m.y', strtotime($sub['date'])), 1, 0, 'C');
-            $pdf->Cell(20, 8, ($sub['hour_slot'] == 0 ? 'Full' : $sub['hour_slot']), 1, 0, 'C');
-            $pdf->Cell(70, 8, $sub['sub_name'], 1, 0, 'L');
-            
-            $status = $sub['status'];
-            if ($status == 'ACCEPTED') $pdf->SetTextColor(0,128,0);
-            else $pdf->SetTextColor(128,0,0);
-            
-            $pdf->Cell(30, 8, $status, 1, 0, 'C');
-            $pdf->SetTextColor(0,0,0);
-            $pdf->Cell(30, 8, '', 1, 1, 'C');
-        }
-    } else {
-        $pdf->Cell(180, 8, 'No substitution required.', 1, 1, 'C');
-    }
-    $pdf->Ln(15);
-
-    // Signatures
-    $ySig = $pdf->GetY();
-    
-    // Check for page break overlap
-    if ($ySig > 250) {
-        $pdf->AddPage();
-        $ySig = $pdf->GetY();
-    }
-
-    // HoD Box
-    $pdf->SetXY(10, $ySig);
-    if ($hodApproval) {
-        $pdf->SetDrawColor(0,128,0);
-        $pdf->SetLineWidth(0.5);
-        $pdf->Rect(10, $ySig, 60, 25);
-        $pdf->SetXY(10, $ySig+2);
-        $pdf->SetTextColor(0,128,0);
-        $pdf->SetFont('Arial','B',10);
-        $pdf->Cell(60, 5, 'Digitally Recommended', 0, 1, 'C');
-        
-        if ($hodSigPath && file_exists('../'.$hodSigPath)) {
-            $pdf->Image('../'.$hodSigPath, 15, $ySig+8, 50, 15);
-        } else {
-            $pdf->SetFont('Arial','I',14);
-            $pdf->SetXY(10, $ySig+10);
-            $pdf->Cell(60, 10, $hodName, 0, 1, 'C');
-        }
-        
-        $pdf->SetFont('Arial','',8);
-        $pdf->SetTextColor(0,0,0);
-        $pdf->SetXY(10, $ySig+20); // Align date bottom
-        $pdf->Cell(60, 5, $hodApproval['created_at'], 0, 1, 'C');
-    } else {
-        $pdf->SetDrawColor(0,0,0);
-        $pdf->Rect(10, $ySig, 60, 25);
-        $pdf->SetXY(10, $ySig+10);
-        $pdf->Cell(60, 5, 'HoD Signature', 0, 0, 'C');
-    }
-
-    // Princ Box
-    $pdf->SetXY(130, $ySig);
-    if ($principalApproval) {
-        $pdf->SetDrawColor(0,128,0);
-        $pdf->SetLineWidth(0.5);
-        $pdf->Rect(130, $ySig, 60, 25);
-        $pdf->SetXY(130, $ySig+2);
-        $pdf->SetTextColor(0,128,0);
-        $pdf->SetFont('Arial','B',10);
-        $pdf->Cell(60, 5, 'Digitally Granted', 0, 1, 'C');
-        
-        if ($princSigPath && file_exists('../'.$princSigPath)) {
-            $pdf->Image('../'.$princSigPath, 135, $ySig+8, 50, 15);
-        } else {
-            $pdf->SetFont('Arial','I',14);
-            $pdf->SetXY(130, $ySig+10);
-            $pdf->Cell(60, 10, $princName, 0, 1, 'C');
-        }
-
-        $pdf->SetFont('Arial','',8);
-        $pdf->SetTextColor(0,0,0);
-        $pdf->SetXY(130, $ySig+20);
-        $pdf->Cell(60, 5, $principalApproval['created_at'], 0, 1, 'C');
-    } else {
-        $pdf->SetDrawColor(0,0,0);
-        $pdf->Rect(130, $ySig, 60, 25);
-        $pdf->SetXY(130, $ySig+10);
-        $pdf->Cell(60, 5, 'Principal Signature', 0, 0, 'C');
-    }
-
-    $pdf->SetDrawColor(0,0,0);
-    $pdf->SetTextColor(0,0,0);
-    $pdf->SetY($ySig + 30);
-
-    $pdf->SetX(10);
-    $pdf->Cell(60,5,'HEAD OF DEPT',0,0,'C');
-    $pdf->SetX(130);
-    $pdf->Cell(60,5,'PRINCIPAL',0,0,'C');
-
-    // Audit
-    logAudit($conn, $user['id'], 'PDF_DOWNLOAD', ['leave_id'=>$leaveId]);
-
-    // Output
-    $pdfContent = $pdf->Output('S');
-    
-    // Clear buffer (important!)
-    if (ob_get_length()) ob_clean();
-
+    /* ---------------- OUTPUT HEADERS ---------------- */
     header('Content-Type: application/pdf');
-    header('Content-Disposition: inline; filename="Leave_Application_'.$leaveId.'.pdf"');
+    header('Content-Disposition: inline; filename="Leave_Application_' . $leaveId . '.pdf"');
     header('Cache-Control: private, max-age=0, must-revalidate');
     header('Pragma: public');
-    header('Content-Length: ' . strlen($pdfContent));
-    
-    echo $pdfContent;
+
+    $pdf->Output('I');
+    exit;
 
 } catch (Throwable $e) {
-    if (ob_get_length()) ob_end_clean(); // Discard any partial content
-    
-    // Log real error
-    error_log("PDF Error on ID $leaveId: " . $e->getMessage());
 
-    // Return friendly JSON error
-    http_response_code($e->getCode() >= 400 && $e->getCode() < 600 ? $e->getCode() : 500);
+    error_log('[PDF ERROR] ' . $e->getMessage());
+
+    http_response_code(500);
     header('Content-Type: application/json');
     echo json_encode([
-        'error' => $e->getMessage(),
-        'debug_hint' => 'Check server logs or FPDF library integrity'
+        'error' => 'PDF generation failed',
+        'message' => $e->getMessage()
     ]);
+    exit;
 }
-?>
