@@ -246,6 +246,126 @@ body {
     justify-content: space-between;
     align-items: center;
     margin-bottom: 32px;
+    position: relative;
+    /* Create stacking context */
+    z-index: 50;
+    /* Ensure it sits above content */
+}
+
+/* Notification Styles */
+.notification-bell {
+    position: relative;
+    cursor: pointer;
+    margin-right: 20px;
+    font-size: 1.2rem;
+    transition: transform 0.2s ease;
+}
+
+.notification-bell:hover {
+    transform: scale(1.1);
+}
+
+.notification-badge {
+    position: absolute;
+    top: -5px;
+    right: -5px;
+    background: #ef4444;
+    color: white;
+    border-radius: 50%;
+    padding: 2px 6px;
+    font-size: 10px;
+    font-weight: bold;
+    display: none;
+    /* Toggled by JS */
+    border: 2px solid white;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    min-width: 18px;
+    text-align: center;
+}
+
+.notification-dropdown {
+    position: absolute;
+    top: 120%;
+    /* Below the bell */
+    right: 0;
+    width: 320px;
+    background: white;
+    border: 1px solid rgba(0, 0, 0, 0.05);
+    border-radius: 12px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15);
+    display: none;
+    /* Toggled by JS */
+    z-index: 10000;
+    max-height: 400px;
+    overflow-y: auto;
+    animation: slideDown 0.2s ease-out;
+    transform-origin: top right;
+}
+
+.notification-dropdown.active {
+    display: block;
+}
+
+@keyframes slideDown {
+    from {
+        opacity: 0;
+        transform: translateY(-10px) scale(0.95);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+/* Custom Scrollbar for Dropdown */
+.notification-dropdown::-webkit-scrollbar {
+    width: 6px;
+}
+
+.notification-dropdown::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 4px;
+}
+
+.notification-dropdown::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 4px;
+}
+
+.notification-dropdown::-webkit-scrollbar-thumb:hover {
+    background: #94a3b8;
+}
+
+.notification-item {
+    padding: 16px;
+    border-bottom: 1px solid #f1f5f9;
+    font-size: 0.9rem;
+    color: var(--text-main);
+    cursor: pointer;
+    transition: background 0.2s;
+    line-height: 1.4;
+}
+
+.notification-item:last-child {
+    border-bottom: none;
+}
+
+.notification-item:hover {
+    background: #f8fafc;
+}
+
+.notification-item.unread {
+    background: #f0f9ff;
+    border-left: 4px solid var(--primary);
+    font-weight: 500;
+}
+
+.notification-empty {
+    padding: 30px;
+    text-align: center;
+    color: var(--text-muted);
+    font-size: 0.9rem;
 }
 
 .logout-btn {

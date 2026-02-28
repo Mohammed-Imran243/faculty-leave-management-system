@@ -1,7 +1,8 @@
 <?php
 require_once '../config.php';
-require_once '../SimpleJWT.php';
-require_once '../audit.php';
+
+require_once '../libs/SimpleJWT.php';
+require_once '../libs/audit.php';
 
 $method = $_SERVER['REQUEST_METHOD'];
 $path = isset($_SERVER['PATH_INFO']) ? $_SERVER['PATH_INFO'] : '/';

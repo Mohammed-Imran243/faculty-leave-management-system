@@ -1,4 +1,28 @@
-const API_URL = '../server/api';
+// Dynamic API URL for robustness
+const getBaseUrl = () => {
+    // If running solely from client folder, go up one level
+    // Expected structure: .../client/index.html
+    const path = window.location.pathname;
+
+    // Logic for VS Code Live Server (usually port 5500 or 5501)
+    if (window.location.port === '5500' || window.location.port === '5501') {
+        const clientIndex = path.indexOf('/client/');
+        if (clientIndex !== -1) {
+            // Assume Backend is standard Apache on Port 80
+            // We strip /client/ to get the root Project Folder name
+            const backendRoot = path.substring(0, clientIndex);
+            return 'http://localhost' + backendRoot + '/server/api';
+        }
+    }
+
+    const clientIndex = path.indexOf('/client/');
+    if (clientIndex !== -1) {
+        return window.location.origin + path.substring(0, clientIndex) + '/server/api';
+    }
+    // Fallback if not inside /client/
+    return '../server/api';
+};
+const API_URL = getBaseUrl();
 
 // --- State Management ---
 const state = {
@@ -6,6 +30,8 @@ const state = {
     token: localStorage.getItem('token') || null,
     notifications: []
 };
+
+let availableSubstitutes = []; // Cache for dynamic rendering
 
 // --- Helpers ---
 function escapeHtml(text) {
@@ -42,7 +68,16 @@ async function apiCall(endpoint, method = 'GET', body = null) {
         return await response.json();
     } catch (error) {
         console.error('API Error:', error);
-        // alert('Connection Error. Make sure XAMPP is running and URL is correct.');
+        if (!navigator.onLine) {
+            alert('You are offline. Please check your internet connection.');
+        } else {
+            // Only alert if we haven't already alerted recently to avoid spam
+            if (!window.hasAlertedConnectionError) {
+                alert('Cannot connect to server. Please ensure XAMPP Apache is running and you are connected to localhost.');
+                window.hasAlertedConnectionError = true;
+                setTimeout(() => window.hasAlertedConnectionError = false, 10000);
+            }
+        }
         return null;
     }
 }
@@ -110,28 +145,56 @@ function updateNotificationUI() {
     badge.textContent = unreadCount;
     badge.style.display = unreadCount > 0 ? 'block' : 'none';
 
-    dropdown.innerHTML = '';
+    // Header
+    let html = `
+        <div class="notification-header">
+            <h3>Notifications</h3>
+            ${unreadCount > 0 ? '<button class="clear-btn" onclick="markAllRead()">Mark all read</button>' : ''}
+        </div>
+        <div class="notification-list">
+    `;
+
     if (state.notifications.length === 0) {
-        dropdown.innerHTML = '<div class="notification-item">No notifications</div>';
-        return;
+        html += '<div class="notification-empty"><i class="fa fa-bell-slash" style="font-size: 24px; margin-bottom: 10px; color: #cbd5e1; display: block;"></i>No notifications</div>';
+    } else {
+        state.notifications.forEach(n => {
+            html += `
+                <div class="notification-item ${n.is_read ? '' : 'unread'}" onclick="markNotificationRead(${n.id})">
+                    <div class="notif-msg">${escapeHtml(n.message)}</div>
+                    <div class="notif-time">${n.created_at ? new Date(n.created_at).toLocaleString() : ''}</div>
+                </div>
+            `;
+        });
     }
 
-    state.notifications.forEach(n => {
-        const div = document.createElement('div');
-        div.className = `notification-item ${n.is_read ? '' : 'unread'}`;
-        div.textContent = n.message;
-        div.onclick = () => markNotificationRead(n.id);
-        dropdown.appendChild(div);
-    });
+    html += '</div>';
+    dropdown.innerHTML = html;
 }
 
-function toggleNotifications() {
+function toggleNotifications(event) {
+    if (event) event.stopPropagation(); // Prevent immediate close by document listener
     const d = document.getElementById('notif-dropdown');
-    d.style.display = d.style.display === 'block' ? 'none' : 'block';
+    d.classList.toggle('active');
 }
+
+// Close Dropdown on Click Outside
+document.addEventListener('click', (e) => {
+    const dropdown = document.getElementById('notif-dropdown');
+    const wrapper = document.getElementById('notification-wrapper');
+    if (dropdown && dropdown.classList.contains('active')) {
+        if (!wrapper.contains(e.target)) {
+            dropdown.classList.remove('active');
+        }
+    }
+});
 
 async function markNotificationRead(id) {
     await apiCall(`/notifications.php/${id}/read`, 'PUT');
+    fetchNotifications();
+}
+
+async function markAllRead() {
+    await apiCall('/notifications.php/read-all', 'PUT');
     fetchNotifications();
 }
 
@@ -215,21 +278,16 @@ async function renderView(viewId) {
 
     // -- Faculty: Apply Leave --
     if (viewId === 'apply') {
-        // Fetch eligible substitutes (Faculty/HoD)
         const facultyList = await apiCall('/users.php/faculty');
-
-        // Filter out self
-        const substitutes = facultyList ? facultyList.filter(u => u.id != state.user.id) : [];
-
-        let subOptions = substitutes.map(u => `<option value="${u.id}">${u.name} (${u.department || ''})</option>`).join('');
+        availableSubstitutes = facultyList ? facultyList.filter(u => u.id != state.user.id) : [];
 
         container.innerHTML = `
-            <div class="glass-card" style="max-width: 600px; margin: 0 auto;">
+            <div class="glass-card" style="max-width: 800px; margin: 0 auto;">
                 <h2>Apply for Leave</h2>
                 <form onsubmit="handleApplyLeave(event)">
                     <div class="form-group">
                         <label>Leave Type</label>
-                        <select class="form-control" name="leave_type" required size="1">
+                        <select class="form-control" name="leave_type" required>
                             <option value="" disabled selected>-- Select Leave Type --</option>
                             <option value="Sick">Sick Leave</option>
                             <option value="Casual">Casual Leave</option>
@@ -239,46 +297,21 @@ async function renderView(viewId) {
                         </select>
                     </div>
 
-                    <div class="form-group">
-                        <label>Duration</label>
-                        <div style="display:flex; gap:20px; margin-bottom:10px;">
-                            <label><input type="radio" name="duration_type" value="Days" checked onchange="toggleDurationMode()"> Full Day(s)</label>
-                            <label><input type="radio" name="duration_type" value="Hours" onchange="toggleDurationMode()"> Hourly</label>
+                    <input type="hidden" name="duration_type" value="Days">
+
+                    <div class="form-group" style="display:flex; gap:10px">
+                        <div style="flex:1">
+                            <label>Start Date</label>
+                            <input type="date" class="form-control" name="start_date" id="start_date" required onchange="updateLeaveDuration()">
+                        </div>
+                        <div style="flex:1">
+                            <label>End Date</label>
+                            <input type="date" class="form-control" name="end_date" id="end_date" required onchange="updateLeaveDuration()">
                         </div>
                     </div>
 
-                    <div id="days-input-group" class="form-group" style="display:flex; gap:10px">
-                        <div style="flex:1"><label>Start Date</label><input type="date" class="form-control" name="start_date"></div>
-                        <div style="flex:1"><label>End Date</label><input type="date" class="form-control" name="end_date"></div>
-                    </div>
-
-                    <div id="hours-input-group" class="form-group" style="display:none;">
-                        <label>Date</label>
-                        <input type="date" class="form-control" name="hourly_date" style="margin-bottom:15px">
-                        
-                        <label>Select Hours (Period 1-8)</label>
-                        <div class="hours-grid-container">
-                            <input type="hidden" name="selected_hours" id="selected-hours-input">
-                            <div class="hours-grid">
-                                <div class="hour-cell" onclick="toggleHour(this, 1)">1</div>
-                                <div class="hour-cell" onclick="toggleHour(this, 2)">2</div>
-                                <div class="hour-cell" onclick="toggleHour(this, 3)">3</div>
-                                <div class="hour-cell" onclick="toggleHour(this, 4)">4</div>
-                                <div class="hour-cell" onclick="toggleHour(this, 5)">5</div>
-                                <div class="hour-cell" onclick="toggleHour(this, 6)">6</div>
-                                <div class="hour-cell" onclick="toggleHour(this, 7)">7</div>
-                                <div class="hour-cell" onclick="toggleHour(this, 8)">8</div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="form-group">
-                        <label>Substitute Faculty</label>
-                        <select class="form-control" name="substitute_id" required>
-                            <option value="">Select Substitute...</option>
-                            ${subOptions}
-                        </select>
-                        <small>They must accept before your leave is processed.</small>
+                    <div id="substitution-container" style="margin-top:20px; border-top:1px solid #eee; padding-top:20px; display:none;">
+                        <!-- Dynamic Content -->
                     </div>
 
                     <div class="form-group">
@@ -296,18 +329,18 @@ async function renderView(viewId) {
     if (viewId === 'substitutions') {
         const reqs = await apiCall('/leaves.php/substitutions/pending');
         let html = `<h2>Substitution Requests</h2><p>Requests assigned to you.</p><div class="table-container"><table>
-            <thead><tr><th>Requester</th><th>Type</th><th>Date(s)</th><th>Reason</th><th>Action</th></tr></thead><tbody>`;
+            <thead><tr><th>Requester</th><th>Type</th><th>Date</th><th>Period</th><th>Reason</th><th>Action</th></tr></thead><tbody>`;
 
         if (reqs && reqs.length > 0) {
             reqs.forEach(r => {
-                let time = r.start_date;
-                if (r.start_date !== r.end_date) time += ` to ${r.end_date}`;
-
+                // Use specific substitution date and period
                 html += `<tr>
                     <td data-label="Requester">${escapeHtml(r.requester_name)}</td>
                     <td data-label="Type">${escapeHtml(r.leave_type)}</td>
-                    <td data-label="Date(s)">${escapeHtml(time)}</td>
+                    <td data-label="Date">${escapeHtml(r.date)}</td>
+                    <td data-label="Period">P${escapeHtml(r.hour_slot)}</td>
                     <td data-label="Reason">${escapeHtml(r.reason)}</td>
+                    <td data-label="Action">
                     <td data-label="Action">
                         <div style="display:flex; gap:10px; justify-content: flex-end;">
                             <button class="btn" style="width:auto; background:green; padding:8px 15px;" onclick="actionSubstitution(${r.id}, 'ACCEPTED')">Accept</button>
@@ -504,29 +537,50 @@ async function handleApplyLeave(e) {
     const formData = new FormData(e.target);
     const data = Object.fromEntries(formData.entries());
 
-    // Validation
-    if (data.duration_type === 'Hours') {
-        if (!data.hourly_date) { alert("Please select a date."); return; }
-        if (!data.selected_hours) { alert("Please select at least one hour."); return; }
-        data.start_date = data.hourly_date;
-        data.end_date = data.hourly_date;
-    } else {
-        if (!data.start_date || !data.end_date) { alert("Please select dates."); return; }
-    }
-
-    // Format Substitutions
-    if (data.substitute_id) {
-        data.substitutions = [
-            { substitute_id: data.substitute_id, hour: 0 }
-        ];
-    } else {
-        alert("Please select a substitute.");
+    // Basic Date Validation
+    if (!data.start_date || !data.end_date) {
+        alert("Please select both Start and End dates.");
         return;
     }
 
+    const start = new Date(data.start_date);
+    const end = new Date(data.end_date);
+
+    if (end < start) {
+        alert("End Date cannot be before Start Date.");
+        return;
+    }
+
+    const diffTime = Math.abs(end - start);
+    const totalDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
+
+    // Substitution Collection & Validation
+    const substitutions = [];
+
+    if (totalDays <= 4) {
+        for (let d = 1; d <= totalDays; d++) {
+            for (let p = 1; p <= 8; p++) {
+                const subId = document.getElementById(`sub_d${d}_p${p}`).value;
+
+                // Optional Substitution: Only process if a substitute is selected
+                if (subId) {
+                    if (subId == state.user.id) {
+                        alert(`You cannot substitute for yourself (Day ${d}, Period ${p}).`);
+                        return;
+                    }
+                    // Map to 1-32 index (Day 1: 1-8, Day 2: 9-16, etc.)
+                    const hourIndex = ((d - 1) * 8) + p;
+                    substitutions.push({ substitute_id: subId, hour: hourIndex });
+                }
+            }
+        }
+    }
+
+    data.substitutions = substitutions;
+
     const res = await apiCall('/leaves.php/apply', 'POST', data);
     if (!res.error) {
-        alert('Leave Applied! Waiting for Substitute Acceptance.');
+        alert('Leave Applied Successfully!');
         renderView('leaves');
     } else {
         alert(res.error);
@@ -563,22 +617,81 @@ async function approveLeave(id, status) {
 }
 
 // --- Helpers ---
-function toggleDurationMode() {
-    const isHourly = document.querySelector('input[name="duration_type"][value="Hours"]').checked;
-    document.getElementById('days-input-group').style.display = isHourly ? 'none' : 'flex';
-    document.getElementById('hours-input-group').style.display = isHourly ? 'block' : 'none';
+function updateLeaveDuration() {
+    const startStr = document.getElementById('start_date').value;
+    const endStr = document.getElementById('end_date').value;
+    const container = document.getElementById('substitution-container');
+
+    if (!startStr || !endStr) {
+        container.style.display = 'none';
+        return;
+    }
+
+    const start = new Date(startStr);
+    const end = new Date(endStr);
+
+    if (end < start) {
+        alert("End Date cannot be before Start Date."); // Pop-up alert as requested
+        document.getElementById('end_date').value = ''; // Reset invalid date
+        container.style.display = 'none';
+        return;
+    }
+
+    const diffTime = Math.abs(end - start);
+    const totalDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
+
+    let subOptions = availableSubstitutes.map(u => `<option value="${u.id}">${u.name} (${u.department || ''})</option>`).join('');
+    let defaultOptions = `<option value="">Select Substitute...</option>${subOptions}`;
+
+    let html = '';
+
+    if (totalDays > 4) {
+        html = `
+            <div style="padding:15px; background:#eef2ff; border-radius:8px; border:1px solid #c7d2fe; color:#3730a3">
+                <i class="fa fa-info-circle"></i> 
+                For leave exceeding 4 days, hour-wise substitution is not required.
+            </div>
+        `;
+    } else {
+        // Render periods for each day
+        for (let d = 1; d <= totalDays; d++) {
+            html += `<h3>Day ${d} – Class Substitution</h3>`;
+            html += renderPeriodRows(d, defaultOptions);
+            if (d < totalDays) html += '<br>';
+        }
+    }
+
+    container.innerHTML = html;
+    container.style.display = 'block';
 }
 
-let selectedHours = new Set();
-function toggleHour(element, hour) {
-    if (selectedHours.has(hour)) {
-        selectedHours.delete(hour);
-        element.classList.remove('selected');
-    } else {
-        selectedHours.add(hour);
-        element.classList.add('selected');
+function renderPeriodRows(dayNum, options) {
+    let rows = `
+        <table style="width:100%; border-collapse: collapse; margin-top: 10px; font-size: 0.9em;">
+            <thead>
+                <tr style="background: #f3f4f6; text-align: left;">
+                    <th style="padding: 8px; border: 1px solid #e5e7eb; width: 60px;">Period</th>
+                    <th style="padding: 8px; border: 1px solid #e5e7eb;">Substitute Faculty</th>
+                </tr>
+            </thead>
+            <tbody>
+    `;
+
+    for (let i = 1; i <= 8; i++) {
+        rows += `
+            <tr>
+                <td data-label="Period" style="padding: 8px; border: 1px solid #e5e7eb; font-weight: bold; text-align: center;">P${i}</td>
+                <td data-label="Substitute Faculty" style="padding: 8px; border: 1px solid #e5e7eb;">
+                    <select class="form-control" id="sub_d${dayNum}_p${i}" style="width: 100%; padding: 6px; border: 1px solid #d1d5db; border-radius: 4px;">
+                        ${options}
+                    </select>
+                </td>
+            </tr>
+        `;
     }
-    document.getElementById('selected-hours-input').value = Array.from(selectedHours).sort().join(',');
+
+    rows += `</tbody></table>`;
+    return rows;
 }
 
 function showCreateUserModal() { document.getElementById('createUserModal').classList.add('active'); }
@@ -629,7 +742,7 @@ async function downloadPdf(id) {
             try {
                 const json = JSON.parse(text);
                 msg = json.message || json.error || text;
-            } catch (_) {}
+            } catch (_) { }
             alert('Failed to download PDF: ' + (msg || 'Unknown error'));
         }
     } catch (e) {
@@ -649,8 +762,9 @@ window.toggleNotifications = toggleNotifications;
 window.handleApplyLeave = handleApplyLeave;
 window.actionSubstitution = actionSubstitution;
 window.approveLeave = approveLeave;
-window.toggleDurationMode = toggleDurationMode;
-window.toggleHour = toggleHour;
+window.updateLeaveDuration = updateLeaveDuration;
+window.toggleHour = null; // Removed
+window.toggleDurationMode = null; // Removed
 window.showCreateUserModal = showCreateUserModal;
 window.hideCreateUserModal = hideCreateUserModal;
 window.handleCreateUser = handleCreateUser;
@@ -670,15 +784,17 @@ export {
     handleApplyLeave,
     actionSubstitution,
     approveLeave,
-    toggleDurationMode,
-    toggleHour,
+    updateLeaveDuration,
     showCreateUserModal,
     hideCreateUserModal,
     handleCreateUser,
     deleteUser,
     downloadPdf,
-    handleSignatureUpload
+    handleSignatureUpload,
+    markAllRead
 };
+
+window.markAllRead = markAllRead;
 
 // Init
 if (window.location.pathname.includes('dashboard.html')) {
