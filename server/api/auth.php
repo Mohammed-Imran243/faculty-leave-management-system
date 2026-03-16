@@ -1,8 +1,9 @@
 <?php
-require_once '../config.php';
+header('Content-Type: application/json');
+require_once '../../includes/config.php';
 
-require_once '../libs/SimpleJWT.php';
-require_once '../libs/audit.php';
+require_once '../../includes/auth_guard.php';
+require_once '../../includes/audit.php';
 
 $method = $_SERVER['REQUEST_METHOD'];
 $path = isset($_SERVER['PATH_INFO']) ? $_SERVER['PATH_INFO'] : '/';
@@ -80,11 +81,17 @@ function login($conn) {
         ];
         $token = JWT::encode($payload);
         
+        session_regenerate_id(true);
+        $csrf_token = bin2hex(random_bytes(32));
+        $_SESSION['csrf_token'] = $csrf_token;
+        $_SESSION['last_activity'] = time();
+        
         logAudit($conn, $user['id'], 'LOGIN_SUCCESS', 'User logged in');
 
         echo json_encode([
             "message" => "Login successful",
             "token" => $token,
+            "csrf_token" => $csrf_token,
             "user" => [
                 "id" => $user['id'],
                 "name" => $user['name'],
@@ -96,7 +103,6 @@ function login($conn) {
         $uid = ($user && isset($user['id'])) ? $user['id'] : null;
         logAudit($conn, $uid, 'LOGIN_FAILED', ['username' => $data->username]);
         http_response_code(401);
-        echo json_encode(["error" => "Invalid credentials"]);
+        echo json_encode(["error" => "Invalid credentials. Please check your username and password."]);
     }
 }
-?>

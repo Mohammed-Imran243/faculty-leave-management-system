@@ -10,7 +10,7 @@ ini_set('display_errors', '1');
 header('Content-Type: text/plain; charset=utf-8');
 
 try {
-    require_once __DIR__ . '/../config.php';
+    require_once __DIR__ . '/../../includes/config.php';
     require_once __DIR__ . '/../fpdf/fpdf.php';
     
     echo "Config loaded.\n";

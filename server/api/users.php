@@ -1,21 +1,14 @@
 <?php
-require_once '../config.php';
+header('Content-Type: application/json');
+require_once '../../includes/config.php';
+require_once '../../includes/audit.php';
 
-require_once '../libs/SimpleJWT.php';
+require_once '../../includes/auth_guard.php';
 
 $method = $_SERVER['REQUEST_METHOD'];
 $path = isset($_SERVER['PATH_INFO']) ? $_SERVER['PATH_INFO'] : '/';
 
-// Middleware: Verify Token
-$token = JWT::get_bearer_token();
-$user_data = null;
-if ($token) $user_data = JWT::decode($token);
-
-if (!$user_data) {
-    http_response_code(403);
-    echo json_encode(["error" => "Unauthorized"]);
-    exit();
-}
+$user_data = $global_user;
 
 // Router
 if ($method === 'POST' && $path === '/create') {
@@ -35,7 +28,7 @@ if ($method === 'POST' && $path === '/create') {
 }
 
 function require_admin($user) {
-    if ($user['role'] !== 'admin') {
+    if (strtolower($user['role']) !== 'admin') {
         http_response_code(403);
         echo json_encode(["error" => "Admin access required"]);
         exit();
@@ -45,21 +38,28 @@ function require_admin($user) {
 function create_user($conn) {
     $data = json_decode(file_get_contents("php://input"));
     
-    if(!isset($data->name) || !isset($data->email) || !isset($data->password) || !isset($data->role)) {
+    if(!isset($data->name) || !isset($data->password) || !isset($data->role) || !isset($data->employee_code)) {
         http_response_code(400);
         echo json_encode(["error" => "Missing fields"]);
         return;
     }
 
-    // Default username to email prefix if not set
-    $username = isset($data->username) ? $data->username : explode('@', $data->email)[0];
+    $email = isset($data->email) ? $data->email : null;
+    $emp_code = $data->employee_code;
+
+    // Default username to 'user_' + random if not set (no longer relying on email prefix)
+    $username = isset($data->username) ? $data->username : 'user_' . bin2hex(random_bytes(4));
 
     $hash = password_hash($data->password, PASSWORD_DEFAULT);
     $dept = isset($data->department) ? $data->department : '';
 
     try {
-        $stmt = $conn->prepare("INSERT INTO users (name, username, email, password_hash, role, department) VALUES (?, ?, ?, ?, ?, ?)");
-        $stmt->execute([$data->name, $username, $data->email, $hash, $data->role, $dept]);
+        $stmt = $conn->prepare("INSERT INTO users (name, username, employee_code, email, password_hash, role, department) VALUES (?, ?, ?, ?, ?, ?, ?)");
+        $stmt->execute([$data->name, $username, $emp_code, $email, $hash, $data->role, $dept]);
+        $newId = $conn->lastInsertId();
+        
+        logAudit($conn, $user_data['id'], 'USER_CREATE', ['created_user_id' => $newId, 'username' => $username, 'role' => $data->role]);
+        
         echo json_encode(["message" => "User created successfully"]);
     } catch(PDOException $e) {
         http_response_code(500);
@@ -71,6 +71,9 @@ function delete_user($conn, $id) {
     try {
         $stmt = $conn->prepare("DELETE FROM users WHERE id = ?");
         $stmt->execute([$id]);
+        
+        logAudit($conn, $user_data['id'], 'USER_DELETE', ['deleted_user_id' => $id]);
+        
         echo json_encode(["message" => "User deleted"]);
     } catch(PDOException $e) {
         http_response_code(500);
@@ -80,7 +83,8 @@ function delete_user($conn, $id) {
 
 function list_users($conn) {
     try {
-        $stmt = $conn->query("SELECT id, name, email, role, department, created_at FROM users ORDER BY created_at DESC");
+        $stmt = $conn->prepare("SELECT id, name, username, employee_code, role, department, created_at FROM users ORDER BY created_at DESC");
+        $stmt->execute();
         echo json_encode($stmt->fetchAll(PDO::FETCH_ASSOC));
     } catch(PDOException $e) {
         http_response_code(500);
@@ -90,8 +94,9 @@ function list_users($conn) {
 
 function list_faculty($conn) {
     try {
-        // Return only what's needed for selection
-        $stmt = $conn->query("SELECT id, name, department FROM users WHERE role IN ('faculty', 'hod') ORDER BY name ASC");
+        // Return only what's needed for selection (Teaching roles + HoD for substitution)
+        $stmt = $conn->prepare("SELECT id, name, department FROM users WHERE LOWER(role) IN ('faculty', 'hod', 'assistant professor (ap)', 'associate professor', 'professor') ORDER BY name ASC");
+        $stmt->execute();
         echo json_encode($stmt->fetchAll(PDO::FETCH_ASSOC));
     } catch(PDOException $e) {
         http_response_code(500);

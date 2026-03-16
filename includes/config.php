@@ -3,6 +3,11 @@
  * Application configuration.
  * Copy to config.local.php and set values there (or use env) for production.
  */
+ini_set('display_errors', 0);
+ini_set('log_errors', 1);
+ini_set('error_log', __DIR__ . '/../server/logs/error.log');
+error_reporting(E_ALL);
+
 $isWeb = isset($_SERVER['REQUEST_METHOD']);
 
 if ($isWeb) {
@@ -17,7 +22,7 @@ if ($isWeb) {
 $host     = '127.0.0.1';
 $db_name  = 'faculty_system';
 $username = 'root';
-$password = '';
+$password = 'Imran@123';
 $base_url = '';
 if (file_exists(__DIR__ . '/config.local.php')) {
     require __DIR__ . '/config.local.php';

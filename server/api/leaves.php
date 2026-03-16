@@ -1,21 +1,15 @@
 <?php
-require_once '../config.php';
+header('Content-Type: application/json');
+require_once '../../includes/config.php';
 
-require_once '../libs/SimpleJWT.php';
-require_once '../libs/helpers.php';
-require_once '../libs/audit.php';
+require_once '../../includes/auth_guard.php';
+require_once '../../includes/helpers.php';
+require_once '../../includes/audit.php';
 
 $method = $_SERVER['REQUEST_METHOD'];
 $path = isset($_SERVER['PATH_INFO']) ? $_SERVER['PATH_INFO'] : '/';
 
-$token = JWT::get_bearer_token();
-$user = $token ? JWT::decode($token) : null;
-
-if (!$user) {
-    http_response_code(403);
-    echo json_encode(["error" => "Unauthorized"]);
-    exit();
-}
+$user = $global_user;
 
 // Router
 if ($method === 'POST' && $path === '/apply') {
@@ -39,6 +33,13 @@ if ($method === 'POST' && $path === '/apply') {
 }
 
 function apply_leave($conn, $user) {
+    // Role validation: Only teaching roles can apply
+    if (!isTeachingRole($user['role']) && $user['role'] !== 'admin') {
+        http_response_code(403);
+        echo json_encode(["error" => "Only faculty/teaching staff can apply for leave."]);
+        return;
+    }
+
     $data = json_decode(file_get_contents("php://input"));
     
     // Basic Validation
@@ -67,27 +68,78 @@ function apply_leave($conn, $user) {
     $substitutions = isset($data->substitutions) ? $data->substitutions : [];
 
     // Validation: Substitution Rules
-    if ($total_days <= 4) {
+    if ($total_days <= 5) {
         // Optional substitutions: No strict count check required.
     } else {
-        // > 4 Days: substitutions are not required/stored
+        // > 5 Days: substitutions are not required/stored
         $substitutions = [];
     }
 
-        try {
+    // Determine target user and override flag
+    $target_user_id = $user['id'];
+    $is_override = false;
+    
+    if (strtolower($user['role']) === 'admin') {
+        if (isset($data->user_id)) {
+            $target_user_id = $data->user_id;
+        }
+        if (isset($data->is_override) && $data->is_override) {
+            $is_override = true;
+        }
+    }
+
+    $default_limits = [
+        'Casual Leave' => 12,
+        'OD' => 1,
+        'ED' => 1
+    ];
+
+    if (!$is_override && array_key_exists($data->leave_type, $default_limits)) {
+        // Fetch dynamic limit from database
+        $stmtRule = $conn->prepare("SELECT rule_value FROM leave_rules WHERE rule_name = ?");
+        $stmtRule->execute([$data->leave_type . ' Limit']);
+        $rule = $stmtRule->fetch();
+        $limit = $rule ? (float)$rule['rule_value'] : $default_limits[$data->leave_type];
+
+        $month = date('m', strtotime($data->start_date));
+        $year = date('Y', strtotime($data->start_date));
+        
+        $stmtLimit = $conn->prepare("SELECT SUM(DATEDIFF(end_date, start_date) + 1) as used_days FROM leave_requests WHERE user_id = ? AND leave_type = ? AND MONTH(start_date) = ? AND YEAR(start_date) = ? AND hod_status != 'Rejected' AND principal_status != 'Rejected'");
+        $stmtLimit->execute([$target_user_id, $data->leave_type, $month, $year]);
+        $usage = $stmtLimit->fetch();
+        $used_days = $usage['used_days'] ? (float)$usage['used_days'] : 0;
+        
+        if (($used_days + $total_days) > $limit) {
+            http_response_code(400);
+            echo json_encode(["error" => "Policy Limit Exceeded: Max {$limit} days per month for {$data->leave_type}. Used: $used_days, Requested: $total_days."]);
+            return;
+        }
+
+        // DUPLICATE PROTECTION: Check if same request exists in last 1 minute
+        $stmtDup = $conn->prepare("SELECT COUNT(*) FROM leave_requests WHERE user_id = ? AND start_date = ? AND end_date = ? AND leave_type = ? AND created_at > (NOW() - INTERVAL 1 MINUTE)");
+        $stmtDup->execute([$target_user_id, $data->start_date, $data->end_date, $data->leave_type]);
+        if ($stmtDup->fetchColumn() > 0) {
+            http_response_code(409);
+            echo json_encode(["error" => "Duplicate submission detected. Please wait a moment."]);
+            return;
+        }
+    }
+
+    try {
         $conn->beginTransaction();
 
-        $stmt = $conn->prepare("INSERT INTO leave_requests (user_id, leave_type, start_date, end_date, reason, duration_type, selected_hours, hod_status, principal_status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
+        $stmt = $conn->prepare("INSERT INTO leave_requests (user_id, leave_type, start_date, end_date, reason, duration_type, selected_hours, hod_status, principal_status, is_override) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
         $stmt->execute([
-            $user['id'],
+            $target_user_id,
             $data->leave_type,
             $data->start_date,
             $data->end_date,
             $data->reason,
             $duration_type,
             $selected_hours,
-            ($user['role'] === 'hod' ? 'Approved' : 'Pending'), // Auto-approve HoD level if applicant is HoD
-            'Pending' // Principal Status
+            (strtolower($user['role']) === 'hod' ? 'Approved' : 'Pending'), // Auto-approve HoD level if applicant is HoD
+            'Pending', // Principal Status
+            $is_override ? 1 : 0
         ]);
         $leave_id = $conn->lastInsertId();
 
@@ -95,11 +147,14 @@ function apply_leave($conn, $user) {
         // Frontend sends: [{ substitute_id: 123, hour: 1-16 }]
         // Map 1-8 -> Day 1, 9-16 -> Day 2
         foreach ($substitutions as $sub) {
+            if (!isset($sub->substitute_id)) continue;
+            
             $hour_idx = isset($sub->hour) ? $sub->hour : 1;
             $sub_id = $sub->substitute_id;
 
-            if ($sub_id == $user['id']) {
-                throw new Exception("Cannot substitute for yourself");
+            if ($sub_id == $target_user_id) {
+                // Ignore self-substitutions silently instead of throwing exception
+                continue;
             }
             
             // Determine Date and Period
@@ -124,7 +179,7 @@ function apply_leave($conn, $user) {
         }
 
         $conn->commit();
-        logAudit($conn, $user['id'], 'LEAVE_APPLIED', ['leave_id'=>$leave_id, 'days'=>$total_days]);
+        logAudit($conn, $target_user_id, 'LEAVE_APPLIED', ['leave_id'=>$leave_id, 'days'=>$total_days, 'is_override'=>$is_override]);
         echo json_encode(["message" => "Leave applied successfully"]);
     } catch(Exception $e) {
         $conn->rollBack();
@@ -188,7 +243,7 @@ function action_substitution($conn, $user, $id) {
 
 // HoD: Get requests from their department
 function get_pending_hod($conn, $user) {
-    if ($user['role'] !== 'hod') return http_response_code(403);
+    if (strtolower($user['role']) !== 'hod') return http_response_code(403);
     
     // Logic: Show requests where `hod_status` is Pending AND
     // (There are NO substitutions OR All substitutions are ACCEPTED)
@@ -222,17 +277,18 @@ function get_pending_hod($conn, $user) {
 
 // Principal: Get HoD-approved requests
 function get_pending_principal($conn, $user) {
-    if ($user['role'] !== 'principal') return http_response_code(403);
+    if (strtolower($user['role']) !== 'principal') return http_response_code(403);
 
     $sql = "SELECT l.*, u.name, u.department FROM leave_requests l 
             JOIN users u ON l.user_id = u.id 
             WHERE l.hod_status = 'Approved' AND l.principal_status = 'Pending'";
-    $stmt = $conn->query($sql);
+    $stmt = $conn->prepare($sql);
+    $stmt->execute();
     echo json_encode($stmt->fetchAll(PDO::FETCH_ASSOC));
 }
 
 function approve_hod($conn, $user, $id) {
-    if ($user['role'] !== 'hod') return http_response_code(403);
+    if (strtolower($user['role']) !== 'hod') return http_response_code(403);
     $data = json_decode(file_get_contents("php://input")); // { "status": "Approved" }
     
     // STRICT CHECK: Ensure all substitutions are accepted
@@ -246,6 +302,16 @@ function approve_hod($conn, $user, $id) {
     if ($check['total'] > 0 && $check['total'] != $check['accepted']) {
         http_response_code(400);
         echo json_encode(["error" => "Cannot approve. Pending substitutions exist."]);
+        return;
+    }
+
+    // SECURITY ENHANCEMENT: Verify department mismatch
+    $stmtDept = $conn->prepare("SELECT u.department FROM leave_requests l JOIN users u ON l.user_id = u.id WHERE l.id = ?");
+    $stmtDept->execute([$id]);
+    $dept = $stmtDept->fetchColumn();
+    if ($dept !== $user['department']) {
+        http_response_code(403);
+        echo json_encode(["error" => "Unauthorized: Department mismatch."]);
         return;
     }
 
@@ -269,7 +335,7 @@ function approve_hod($conn, $user, $id) {
 }
 
 function approve_principal($conn, $user, $id) {
-    if ($user['role'] !== 'principal') return http_response_code(403);
+    if (strtolower($user['role']) !== 'principal') return http_response_code(403);
     $data = json_decode(file_get_contents("php://input")); 
     
     // STRICT CHECK: HoD must have approved (unless the applicant is the HoD)
@@ -283,7 +349,7 @@ function approve_principal($conn, $user, $id) {
     $stmtRole->execute([$current['user_id']]);
     $applicant = $stmtRole->fetch();
 
-    if ($current['hod_status'] !== 'Approved' && $applicant['role'] !== 'hod') {
+    if ($current['hod_status'] !== 'Approved' && strtolower($applicant['role']) !== 'hod') {
          http_response_code(400);
          echo json_encode(["error" => "Cannot approve. HoD approval missing."]);
          return;
@@ -305,9 +371,7 @@ function approve_principal($conn, $user, $id) {
      
      logAudit($conn, $user['id'], 'PRINCIPAL_ACTION', ['leave_id'=>$id, 'status'=>$data->status]);
 
-    // Generate PDF URL (base from config or current request)
-    $apiDir = dirname($_SERVER['SCRIPT_NAME'] ?? '/server/api');
-    $pdfUrl = ($base_url ?? '') . $apiDir . '/generate_pdf.php?id=' . $id;
-    echo json_encode(["message" => "Principal Status Updated", "pdf_url" => $pdfUrl]);
+    // Auto-download disabled. Return simple success message.
+    echo json_encode(["message" => "Principal Status Updated"]);
 }
 

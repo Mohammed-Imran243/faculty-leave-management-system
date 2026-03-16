@@ -1,37 +1,11 @@
-// Dynamic API URL for robustness
-const getBaseUrl = () => {
-    // If running solely from client folder, go up one level
-    // Expected structure: .../client/index.html
-    const path = window.location.pathname;
+const API_URL = '../server/api';
 
-    // Logic for VS Code Live Server (usually port 5500 or 5501)
-    if (window.location.port === '5500' || window.location.port === '5501') {
-        const clientIndex = path.indexOf('/client/');
-        if (clientIndex !== -1) {
-            // Assume Backend is standard Apache on Port 80
-            // We strip /client/ to get the root Project Folder name
-            const backendRoot = path.substring(0, clientIndex);
-            return 'http://localhost' + backendRoot + '/server/api';
-        }
-    }
-
-    const clientIndex = path.indexOf('/client/');
-    if (clientIndex !== -1) {
-        return window.location.origin + path.substring(0, clientIndex) + '/server/api';
-    }
-    // Fallback if not inside /client/
-    return '../server/api';
-};
-const API_URL = getBaseUrl();
-
-// --- State Management ---
 const state = {
     user: JSON.parse(localStorage.getItem('user')) || null,
     token: localStorage.getItem('token') || null,
+    csrf: localStorage.getItem('csrf') || null,
     notifications: []
 };
-
-let availableSubstitutes = []; // Cache for dynamic rendering
 
 // --- Helpers ---
 function escapeHtml(text) {
@@ -49,10 +23,16 @@ async function apiCall(endpoint, method = 'GET', body = null) {
     const headers = { 'Content-Type': 'application/json' };
     if (state.token) headers['Authorization'] = `Bearer ${state.token}`;
 
+    // Inject CSRF token for mutating requests
+    if (state.csrf && ['POST', 'PUT', 'DELETE'].includes(method.toUpperCase())) {
+        headers['X-CSRF-Token'] = state.csrf;
+    }
+
     try {
         const response = await fetch(`${API_URL}${endpoint}`, {
             method,
             headers,
+            credentials: 'same-origin',
             body: body ? JSON.stringify(body) : null
         });
 
@@ -68,16 +48,7 @@ async function apiCall(endpoint, method = 'GET', body = null) {
         return await response.json();
     } catch (error) {
         console.error('API Error:', error);
-        if (!navigator.onLine) {
-            alert('You are offline. Please check your internet connection.');
-        } else {
-            // Only alert if we haven't already alerted recently to avoid spam
-            if (!window.hasAlertedConnectionError) {
-                alert('Cannot connect to server. Please ensure XAMPP Apache is running and you are connected to localhost.');
-                window.hasAlertedConnectionError = true;
-                setTimeout(() => window.hasAlertedConnectionError = false, 10000);
-            }
-        }
+        // alert('Connection Error. Make sure XAMPP is running and URL is correct.');
         return null;
     }
 }
@@ -89,8 +60,12 @@ async function login(username, password) {
         if (data && data.token) {
             state.token = data.token;
             state.user = data.user;
+            state.csrf = data.csrf_token;
+
             localStorage.setItem('token', data.token);
             localStorage.setItem('user', JSON.stringify(data.user));
+            if (data.csrf_token) localStorage.setItem('csrf', data.csrf_token);
+
             window.location.href = 'dashboard.html';
         } else {
             alert('Login Failed: ' + (data?.error || 'Unknown Error'));
@@ -145,56 +120,28 @@ function updateNotificationUI() {
     badge.textContent = unreadCount;
     badge.style.display = unreadCount > 0 ? 'block' : 'none';
 
-    // Header
-    let html = `
-        <div class="notification-header">
-            <h3>Notifications</h3>
-            ${unreadCount > 0 ? '<button class="clear-btn" onclick="markAllRead()">Mark all read</button>' : ''}
-        </div>
-        <div class="notification-list">
-    `;
-
+    dropdown.innerHTML = '';
     if (state.notifications.length === 0) {
-        html += '<div class="notification-empty"><i class="fa fa-bell-slash" style="font-size: 24px; margin-bottom: 10px; color: #cbd5e1; display: block;"></i>No notifications</div>';
-    } else {
-        state.notifications.forEach(n => {
-            html += `
-                <div class="notification-item ${n.is_read ? '' : 'unread'}" onclick="markNotificationRead(${n.id})">
-                    <div class="notif-msg">${escapeHtml(n.message)}</div>
-                    <div class="notif-time">${n.created_at ? new Date(n.created_at).toLocaleString() : ''}</div>
-                </div>
-            `;
-        });
+        dropdown.innerHTML = '<div class="notification-item">No notifications</div>';
+        return;
     }
 
-    html += '</div>';
-    dropdown.innerHTML = html;
+    state.notifications.forEach(n => {
+        const div = document.createElement('div');
+        div.className = `notification-item ${n.is_read ? '' : 'unread'}`;
+        div.textContent = n.message;
+        div.onclick = () => markNotificationRead(n.id);
+        dropdown.appendChild(div);
+    });
 }
 
-function toggleNotifications(event) {
-    if (event) event.stopPropagation(); // Prevent immediate close by document listener
+function toggleNotifications() {
     const d = document.getElementById('notif-dropdown');
-    d.classList.toggle('active');
+    d.style.display = d.style.display === 'block' ? 'none' : 'block';
 }
-
-// Close Dropdown on Click Outside
-document.addEventListener('click', (e) => {
-    const dropdown = document.getElementById('notif-dropdown');
-    const wrapper = document.getElementById('notification-wrapper');
-    if (dropdown && dropdown.classList.contains('active')) {
-        if (!wrapper.contains(e.target)) {
-            dropdown.classList.remove('active');
-        }
-    }
-});
 
 async function markNotificationRead(id) {
     await apiCall(`/notifications.php/${id}/read`, 'PUT');
-    fetchNotifications();
-}
-
-async function markAllRead() {
-    await apiCall('/notifications.php/read-all', 'PUT');
     fetchNotifications();
 }
 
@@ -207,6 +154,7 @@ function renderSidebar() {
 
     if (role === 'admin') {
         items.push({ id: 'users', label: 'Manage Users', icon: '<i class="fa fa-users"></i>' });
+        items.push({ id: 'rules', label: 'Leave Policy Settings', icon: '<i class="fa fa-sliders"></i>' });
     }
 
     if (role === 'faculty') {
@@ -276,42 +224,76 @@ async function renderView(viewId) {
         return;
     }
 
+    // -- Admin: Leave Policy Settings --
+    if (viewId === 'rules' && state.user.role === 'admin') {
+        const rules = await apiCall('/rules.php');
+        if (!rules) return;
+
+        let html = `
+            <div class="header">
+                <h2>Leave Policy Settings</h2>
+            </div>
+            <div class="table-container">
+            <table>
+                <thead><tr><th>Rule Name</th><th>Description</th><th>Period</th><th>Current Value</th><th>Action</th></tr></thead>
+                <tbody>
+        `;
+        rules.forEach(r => {
+            html += `<tr>
+                <td data-label="Rule Name">${escapeHtml(r.rule_name)}</td>
+                <td data-label="Description">${escapeHtml(r.description || '-')}</td>
+                <td data-label="Period">${escapeHtml(r.rule_period)}</td>
+                <td data-label="Current Value">
+                    <input type="number" id="rule-val-${r.id}" class="form-control" value="${Math.floor(r.rule_value)}" style="width:100px; display:inline-block; padding: 5px;">
+                </td>
+                <td data-label="Action">
+                    <button class="btn btn-primary" onclick="updateRule(${r.id})" style="padding: 5px 10px; width:auto; border-radius:4px;"><i class="fa fa-save"></i> Save</button>
+                </td>
+            </tr>`;
+        });
+        html += '</tbody></table></div>';
+        container.innerHTML = html;
+        return;
+    }
+
     // -- Faculty: Apply Leave --
     if (viewId === 'apply') {
+        // Fetch eligible substitutes (Faculty/HoD)
         const facultyList = await apiCall('/users.php/faculty');
-        availableSubstitutes = facultyList ? facultyList.filter(u => u.id != state.user.id) : [];
+
+        // Filter out self
+        const substitutes = facultyList ? facultyList.filter(u => u.id != state.user.id) : [];
+
+        let subOptions = substitutes.map(u => `<option value="${u.id}">${u.name} (${u.department || ''})</option>`).join('');
 
         container.innerHTML = `
-            <div class="glass-card" style="max-width: 800px; margin: 0 auto;">
+            <div class="glass-card" style="max-width: 600px; margin: 0 auto;">
                 <h2>Apply for Leave</h2>
                 <form onsubmit="handleApplyLeave(event)">
                     <div class="form-group">
                         <label>Leave Type</label>
-                        <select class="form-control" name="leave_type" required>
+                        <select class="form-control" name="leave_type" required size="1">
                             <option value="" disabled selected>-- Select Leave Type --</option>
                             <option value="Sick">Sick Leave</option>
                             <option value="Casual">Casual Leave</option>
                             <option value="Academic">Academic Leave</option>
-                            <option value="OD">Permission for Other Duty</option>
-                            <option value="ED">Permission for Other Duty</option>
+                            <option value="OD">On Duty (OD)</option>
+                            <option value="ED">External Duty (ED)</option>
                         </select>
                     </div>
 
-                    <input type="hidden" name="duration_type" value="Days">
-
-                    <div class="form-group" style="display:flex; gap:10px">
-                        <div style="flex:1">
-                            <label>Start Date</label>
-                            <input type="date" class="form-control" name="start_date" id="start_date" required onchange="updateLeaveDuration()">
-                        </div>
-                        <div style="flex:1">
-                            <label>End Date</label>
-                            <input type="date" class="form-control" name="end_date" id="end_date" required onchange="updateLeaveDuration()">
-                        </div>
+                    <div id="days-input-group" class="form-group" style="display:flex; gap:10px">
+                        <div style="flex:1"><label>Start Date</label><input type="date" class="form-control" name="start_date" required></div>
+                        <div style="flex:1"><label>End Date</label><input type="date" class="form-control" name="end_date" required></div>
                     </div>
 
-                    <div id="substitution-container" style="margin-top:20px; border-top:1px solid #eee; padding-top:20px; display:none;">
-                        <!-- Dynamic Content -->
+                    <div class="form-group">
+                        <label>Substitute Faculty</label>
+                        <select class="form-control" name="substitute_id" required>
+                            <option value="">Select Substitute...</option>
+                            ${subOptions}
+                        </select>
+                        <small>They must accept before your leave is processed.</small>
                     </div>
 
                     <div class="form-group">
@@ -329,18 +311,18 @@ async function renderView(viewId) {
     if (viewId === 'substitutions') {
         const reqs = await apiCall('/leaves.php/substitutions/pending');
         let html = `<h2>Substitution Requests</h2><p>Requests assigned to you.</p><div class="table-container"><table>
-            <thead><tr><th>Requester</th><th>Type</th><th>Date</th><th>Period</th><th>Reason</th><th>Action</th></tr></thead><tbody>`;
+            <thead><tr><th>Requester</th><th>Type</th><th>Date(s)</th><th>Reason</th><th>Action</th></tr></thead><tbody>`;
 
         if (reqs && reqs.length > 0) {
             reqs.forEach(r => {
-                // Use specific substitution date and period
+                let time = r.start_date;
+                if (r.start_date !== r.end_date) time += ` to ${r.end_date}`;
+
                 html += `<tr>
                     <td data-label="Requester">${escapeHtml(r.requester_name)}</td>
                     <td data-label="Type">${escapeHtml(r.leave_type)}</td>
-                    <td data-label="Date">${escapeHtml(r.date)}</td>
-                    <td data-label="Period">P${escapeHtml(r.hour_slot)}</td>
+                    <td data-label="Date(s)">${escapeHtml(time)}</td>
                     <td data-label="Reason">${escapeHtml(r.reason)}</td>
-                    <td data-label="Action">
                     <td data-label="Action">
                         <div style="display:flex; gap:10px; justify-content: flex-end;">
                             <button class="btn" style="width:auto; background:green; padding:8px 15px;" onclick="actionSubstitution(${r.id}, 'ACCEPTED')">Accept</button>
@@ -374,6 +356,13 @@ async function renderView(viewId) {
             let pdfLink = '-';
 
             if (l.principal_status === 'Approved') {
+                // Keep the old action button if needed, or remove it. The user specifically asked for a mail icon.
+                // Merging logic: The user asked for a mail icon in a separate column? Or just generally?
+                // The implementation strategy was: "Add PDF column".
+
+                // actionHtml = `<button class="btn" style="width:auto; padding:5px 10px; background:#4f46e5" onclick="downloadPdf(${l.id})">📄 PDF</button>`;
+                // Let's keep the actionHtml pure (maybe for cancel later?) and put PDF in its own column as planned.
+
                 pdfLink = `<i class="fa fa-envelope" style="cursor:pointer; color:#4f46e5; font-size:1.2em" title="Download PDF" onclick="downloadPdf(${l.id})"></i>`;
             }
 
@@ -434,6 +423,8 @@ async function renderView(viewId) {
         } else {
             html += '<tr><td colspan="6" style="text-align:center">No pending requests</td></tr>';
         }
+        html += '</tbody></table></div>';
+        container.innerHTML = html;
         html += '</tbody></table></div>';
         container.innerHTML = html;
         return;
@@ -513,8 +504,10 @@ async function handleSignatureUpload(e) {
         const token = localStorage.getItem('token');
         const res = await fetch(API_URL + '/upload_signature.php', {
             method: 'POST',
+            credentials: 'same-origin',
             headers: {
-                'Authorization': `Bearer ${token}`
+                'Authorization': `Bearer ${token}`,
+                'X-CSRF-Token': localStorage.getItem('csrf') || ''
             },
             body: formData
         });
@@ -537,50 +530,25 @@ async function handleApplyLeave(e) {
     const formData = new FormData(e.target);
     const data = Object.fromEntries(formData.entries());
 
-    // Basic Date Validation
+    // Validation
     if (!data.start_date || !data.end_date) {
-        alert("Please select both Start and End dates.");
+        alert("Please select dates.");
         return;
     }
 
-    const start = new Date(data.start_date);
-    const end = new Date(data.end_date);
-
-    if (end < start) {
-        alert("End Date cannot be before Start Date.");
+    // Format Substitutions
+    if (data.substitute_id) {
+        data.substitutions = [
+            { substitute_id: data.substitute_id, hour: 0 }
+        ];
+    } else {
+        alert("Please select a substitute.");
         return;
     }
-
-    const diffTime = Math.abs(end - start);
-    const totalDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
-
-    // Substitution Collection & Validation
-    const substitutions = [];
-
-    if (totalDays <= 4) {
-        for (let d = 1; d <= totalDays; d++) {
-            for (let p = 1; p <= 8; p++) {
-                const subId = document.getElementById(`sub_d${d}_p${p}`).value;
-
-                // Optional Substitution: Only process if a substitute is selected
-                if (subId) {
-                    if (subId == state.user.id) {
-                        alert(`You cannot substitute for yourself (Day ${d}, Period ${p}).`);
-                        return;
-                    }
-                    // Map to 1-32 index (Day 1: 1-8, Day 2: 9-16, etc.)
-                    const hourIndex = ((d - 1) * 8) + p;
-                    substitutions.push({ substitute_id: subId, hour: hourIndex });
-                }
-            }
-        }
-    }
-
-    data.substitutions = substitutions;
 
     const res = await apiCall('/leaves.php/apply', 'POST', data);
     if (!res.error) {
-        alert('Leave Applied Successfully!');
+        alert('Leave Applied! Waiting for Substitute Acceptance.');
         renderView('leaves');
     } else {
         alert(res.error);
@@ -607,91 +575,13 @@ async function approveLeave(id, status) {
 
     const res = await apiCall(endpoint, 'PUT', { status });
     if (!res.error) {
-        if (res.pdf_url && role === 'principal') {
-            downloadPdf(id);
+        if (res.pdf_url) {
+            window.open(res.pdf_url, '_blank');
         }
         renderView('approvals');
     } else {
         alert(res.error);
     }
-}
-
-// --- Helpers ---
-function updateLeaveDuration() {
-    const startStr = document.getElementById('start_date').value;
-    const endStr = document.getElementById('end_date').value;
-    const container = document.getElementById('substitution-container');
-
-    if (!startStr || !endStr) {
-        container.style.display = 'none';
-        return;
-    }
-
-    const start = new Date(startStr);
-    const end = new Date(endStr);
-
-    if (end < start) {
-        alert("End Date cannot be before Start Date."); // Pop-up alert as requested
-        document.getElementById('end_date').value = ''; // Reset invalid date
-        container.style.display = 'none';
-        return;
-    }
-
-    const diffTime = Math.abs(end - start);
-    const totalDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
-
-    let subOptions = availableSubstitutes.map(u => `<option value="${u.id}">${u.name} (${u.department || ''})</option>`).join('');
-    let defaultOptions = `<option value="">Select Substitute...</option>${subOptions}`;
-
-    let html = '';
-
-    if (totalDays > 4) {
-        html = `
-            <div style="padding:15px; background:#eef2ff; border-radius:8px; border:1px solid #c7d2fe; color:#3730a3">
-                <i class="fa fa-info-circle"></i> 
-                For leave exceeding 4 days, hour-wise substitution is not required.
-            </div>
-        `;
-    } else {
-        // Render periods for each day
-        for (let d = 1; d <= totalDays; d++) {
-            html += `<h3>Day ${d} – Class Substitution</h3>`;
-            html += renderPeriodRows(d, defaultOptions);
-            if (d < totalDays) html += '<br>';
-        }
-    }
-
-    container.innerHTML = html;
-    container.style.display = 'block';
-}
-
-function renderPeriodRows(dayNum, options) {
-    let rows = `
-        <table style="width:100%; border-collapse: collapse; margin-top: 10px; font-size: 0.9em;">
-            <thead>
-                <tr style="background: #f3f4f6; text-align: left;">
-                    <th style="padding: 8px; border: 1px solid #e5e7eb; width: 60px;">Period</th>
-                    <th style="padding: 8px; border: 1px solid #e5e7eb;">Substitute Faculty</th>
-                </tr>
-            </thead>
-            <tbody>
-    `;
-
-    for (let i = 1; i <= 8; i++) {
-        rows += `
-            <tr>
-                <td data-label="Period" style="padding: 8px; border: 1px solid #e5e7eb; font-weight: bold; text-align: center;">P${i}</td>
-                <td data-label="Substitute Faculty" style="padding: 8px; border: 1px solid #e5e7eb;">
-                    <select class="form-control" id="sub_d${dayNum}_p${i}" style="width: 100%; padding: 6px; border: 1px solid #d1d5db; border-radius: 4px;">
-                        ${options}
-                    </select>
-                </td>
-            </tr>
-        `;
-    }
-
-    rows += `</tbody></table>`;
-    return rows;
 }
 
 function showCreateUserModal() { document.getElementById('createUserModal').classList.add('active'); }
@@ -722,12 +612,13 @@ async function downloadPdf(id) {
     try {
         const response = await fetch(`${API_URL}/generate_pdf.php?id=${id}`, {
             method: 'GET',
-            headers: { 'Authorization': `Bearer ${state.token}` }
+            headers: {
+                'Authorization': `Bearer ${state.token}`
+            }
         });
 
         if (response.ok) {
-            const data = await response.arrayBuffer();
-            const blob = new Blob([data], { type: 'application/pdf' });
+            const blob = await response.blob();
             const url = window.URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
@@ -737,17 +628,37 @@ async function downloadPdf(id) {
             a.remove();
             window.URL.revokeObjectURL(url);
         } else {
-            const text = await response.text();
-            let msg = text;
-            try {
-                const json = JSON.parse(text);
-                msg = json.message || json.error || text;
-            } catch (_) { }
-            alert('Failed to download PDF: ' + (msg || 'Unknown error'));
+            const err = await response.text();
+            alert('Failed to download PDF: ' + err);
         }
     } catch (e) {
         console.error(e);
-        alert('Download failed. Check your connection.');
+        alert('Download failed');
+    }
+}
+
+function showNotification(msg, type) {
+    console.log(`[Notification - ${type}]: ${msg}`);
+}
+
+async function updateRule(id) {
+    const valInput = document.getElementById(`rule-val-${id}`);
+    if (!valInput) return;
+
+    const newVal = valInput.value;
+    if (newVal === '' || isNaN(newVal)) {
+        alert("Please enter a valid number");
+        return;
+    }
+
+    if (!confirm('Update this policy rule?')) return;
+
+    const res = await apiCall(`/rules.php/${id}`, 'PUT', { rule_value: parseFloat(newVal) });
+    if (!res || res.error) {
+        alert(res?.error || "Failed to update rule. Invalid CSRF token or server error.");
+    } else {
+        alert("Rule updated successfully!");
+        renderView('rules');
     }
 }
 
@@ -762,17 +673,18 @@ window.toggleNotifications = toggleNotifications;
 window.handleApplyLeave = handleApplyLeave;
 window.actionSubstitution = actionSubstitution;
 window.approveLeave = approveLeave;
-window.updateLeaveDuration = updateLeaveDuration;
-window.toggleHour = null; // Removed
-window.toggleDurationMode = null; // Removed
-window.showCreateUserModal = showCreateUserModal;
 window.hideCreateUserModal = hideCreateUserModal;
 window.handleCreateUser = handleCreateUser;
 window.deleteUser = deleteUser;
+window.updateRule = updateRule;
 
 function toggleSidebar() {
     const sidebar = document.querySelector('.sidebar');
+    const overlay = document.getElementById('sidebar-overlay');
     sidebar.classList.toggle('active');
+    if (overlay) {
+        overlay.classList.toggle('active');
+    }
 }
 window.toggleSidebar = toggleSidebar;
 
@@ -784,17 +696,13 @@ export {
     handleApplyLeave,
     actionSubstitution,
     approveLeave,
-    updateLeaveDuration,
     showCreateUserModal,
     hideCreateUserModal,
     handleCreateUser,
     deleteUser,
     downloadPdf,
-    handleSignatureUpload,
-    markAllRead
+    handleSignatureUpload
 };
-
-window.markAllRead = markAllRead;
 
 // Init
 if (window.location.pathname.includes('dashboard.html')) {

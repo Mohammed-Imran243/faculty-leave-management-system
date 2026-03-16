@@ -48,6 +48,10 @@ function escapeHtml(text) {
 async function apiCall(endpoint, method = 'GET', body = null) {
     const headers = { 'Content-Type': 'application/json' };
     if (state.token) headers['Authorization'] = `Bearer ${state.token}`;
+    if (['POST', 'PUT', 'DELETE'].includes(method)) {
+        const csrfToken = localStorage.getItem('csrf_token');
+        if (csrfToken) headers['X-CSRF-Token'] = csrfToken;
+    }
 
     try {
         const response = await fetch(`${API_URL}${endpoint}`, {
@@ -69,11 +73,11 @@ async function apiCall(endpoint, method = 'GET', body = null) {
     } catch (error) {
         console.error('API Error:', error);
         if (!navigator.onLine) {
-            alert('You are offline. Please check your internet connection.');
+            showError('You are offline. Please check your internet connection.');
         } else {
             // Only alert if we haven't already alerted recently to avoid spam
             if (!window.hasAlertedConnectionError) {
-                alert('Cannot connect to server. Please ensure XAMPP Apache is running and you are connected to localhost.');
+                showError('Cannot connect to server. Please ensure XAMPP Apache is running and you are connected to localhost.');
                 window.hasAlertedConnectionError = true;
                 setTimeout(() => window.hasAlertedConnectionError = false, 10000);
             }
@@ -91,12 +95,13 @@ async function login(username, password) {
             state.user = data.user;
             localStorage.setItem('token', data.token);
             localStorage.setItem('user', JSON.stringify(data.user));
+            if (data.csrf_token) localStorage.setItem('csrf_token', data.csrf_token);
             window.location.href = 'dashboard.html';
         } else {
-            alert('Login Failed: ' + (data?.error || 'Unknown Error'));
+            showError('Login Failed: ' + (data?.error || 'Unknown Error'));
         }
     } catch (e) {
-        alert("System Error: " + e.message);
+        showError("System Error: " + e.message);
     }
 }
 
@@ -118,15 +123,37 @@ function initDashboard() {
     document.getElementById('user-name').textContent = state.user.name;
     document.getElementById('user-role').textContent = state.user.role.toUpperCase();
 
-    // Init Notifications
-    fetchNotifications();
-    setInterval(fetchNotifications, 30000); // Poll every 30s
+    // Init Notifications & Alerts
+    fetchUnreadCount();
+    fetchAlerts();
+    setInterval(fetchUnreadCount, 10000); // Lightweight polling every 10s
+    setInterval(fetchAlerts, 15000); // 15-second polling for real-time alerts
 
     // Render Sidebar
     renderSidebar();
 
-    // Render Default View
-    renderView(state.user.role === 'admin' ? 'users' : 'leaves');
+    // Render Default View OR Select Active Module
+    if (!window.isModulePage) {
+        renderView(state.user.role === 'admin' ? 'users' : 'leaves');
+    } else {
+        // Highlight the currently active module in the newly rendered sidebar
+        document.querySelectorAll('.nav-item').forEach(el => {
+            if (el.innerHTML.toLowerCase().includes(window.currentModule)) {
+                el.classList.add('active');
+            }
+        });
+    }
+}
+
+async function fetchUnreadCount() {
+    const data = await apiCall('/notifications.php/unread-count');
+    if (data && data.unread_count !== undefined) {
+        const badge = document.getElementById('notif-badge');
+        if (badge) {
+            badge.textContent = data.unread_count;
+            badge.style.display = data.unread_count > 0 ? 'block' : 'none';
+        }
+    }
 }
 
 async function fetchNotifications() {
@@ -138,18 +165,14 @@ async function fetchNotifications() {
 }
 
 function updateNotificationUI() {
-    const badge = document.getElementById('notif-badge');
     const dropdown = document.getElementById('notif-dropdown');
-
     const unreadCount = state.notifications.filter(n => !n.is_read).length;
-    badge.textContent = unreadCount;
-    badge.style.display = unreadCount > 0 ? 'block' : 'none';
 
     // Header
     let html = `
         <div class="notification-header">
             <h3>Notifications</h3>
-            ${unreadCount > 0 ? '<button class="clear-btn" onclick="markAllRead()">Mark all read</button>' : ''}
+            ${unreadCount > 0 ? '<button class="clear-btn notif-mark-all">Mark all read</button>' : ''}
         </div>
         <div class="notification-list">
     `;
@@ -159,7 +182,7 @@ function updateNotificationUI() {
     } else {
         state.notifications.forEach(n => {
             html += `
-                <div class="notification-item ${n.is_read ? '' : 'unread'}" onclick="markNotificationRead(${n.id})">
+                <div class="notification-item ${n.is_read ? '' : 'unread'} notif-mark-read" data-id="${n.id}">
                     <div class="notif-msg">${escapeHtml(n.message)}</div>
                     <div class="notif-time">${n.created_at ? new Date(n.created_at).toLocaleString() : ''}</div>
                 </div>
@@ -169,11 +192,36 @@ function updateNotificationUI() {
 
     html += '</div>';
     dropdown.innerHTML = html;
+
+    // Attach Event Listeners
+    const markAllBtn = dropdown.querySelector('.notif-mark-all');
+    if (markAllBtn) {
+        markAllBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            markAllRead();
+        });
+    }
+
+    const itemBtns = dropdown.querySelectorAll('.notif-mark-read');
+    itemBtns.forEach(item => {
+        item.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const id = item.getAttribute('data-id');
+            if (id) markNotificationRead(id);
+        });
+    });
 }
 
-function toggleNotifications(event) {
+async function toggleNotifications(event) {
     if (event) event.stopPropagation(); // Prevent immediate close by document listener
     const d = document.getElementById('notif-dropdown');
+    const isActive = d.classList.contains('active');
+
+    if (!isActive) {
+        // Fetch only when opening
+        await fetchNotifications();
+    }
+
     d.classList.toggle('active');
 }
 
@@ -213,6 +261,10 @@ function renderSidebar() {
         items.push({ id: 'apply', label: 'Apply Leave', icon: '<i class="fa fa-file-pen"></i>' });
         items.push({ id: 'leaves', label: 'My History', icon: '<i class="fa fa-calendar-days"></i>' });
         items.push({ id: 'substitutions', label: 'Substitution Requests', icon: '<i class="fa fa-rotate"></i>' });
+
+        // Add new modules directly linking to the PHP dashboard forms
+        items.push({ id: 'permission', label: 'Permission', icon: '<i class="fa fa-clock"></i>', path: 'permission.php' });
+        items.push({ id: 'outpass', label: 'Outpass', icon: '<i class="fa fa-door-open"></i>', path: 'outpass.php' });
     }
 
     if (role === 'hod' || role === 'principal' || role === 'admin') {
@@ -230,7 +282,12 @@ function renderSidebar() {
         div.className = 'nav-item';
         div.innerHTML = `<span>${item.icon}</span> ${item.label}`;
         div.onclick = () => {
-            renderView(item.id);
+            if (item.path) {
+                // If the sidebar item has a dedicated PHP file to navigate to
+                window.location.href = item.path;
+            } else {
+                renderView(item.id);
+            }
             // Close sidebar on mobile if open
             const sidebar = document.querySelector('.sidebar');
             if (sidebar.classList.contains('active')) {
@@ -292,8 +349,8 @@ async function renderView(viewId) {
                             <option value="Sick">Sick Leave</option>
                             <option value="Casual">Casual Leave</option>
                             <option value="Academic">Academic Leave</option>
-                            <option value="OD">Permission for Other Duty</option>
-                            <option value="ED">Permission for Other Duty</option>
+                            <option value="OD">On Duty (OD)</option>
+                            <option value="ED">External Duty (ED)</option>
                         </select>
                     </div>
 
@@ -395,38 +452,102 @@ async function renderView(viewId) {
 
     // -- Approvals (HoD / Principal) --
     if (viewId === 'approvals') {
-        let endpoint = '';
-        if (state.user.role === 'hod') endpoint = '/leaves.php/pending/hod';
-        else if (state.user.role === 'principal') endpoint = '/leaves.php/pending/principal';
+        let leavesEndpoint = '', permEndpoint = '', outpassEndpoint = '';
+        if (state.user.role === 'hod') {
+            leavesEndpoint = '/leaves.php/pending/hod';
+            permEndpoint = '/permissions.php/pending/hod';
+            outpassEndpoint = '/outpasses.php/pending/hod';
+        } else if (state.user.role === 'principal') {
+            leavesEndpoint = '/leaves.php/pending/principal';
+            permEndpoint = '/permissions.php/pending/principal';
+            outpassEndpoint = '/outpasses.php/pending/principal';
+        }
 
-        const leaves = await apiCall(endpoint);
+        const [leaves, permissions, outpasses] = await Promise.all([
+            apiCall(leavesEndpoint),
+            apiCall(permEndpoint),
+            apiCall(outpassEndpoint)
+        ]);
 
-        let html = `<h2>Pending Approvals</h2><br><div class="table-container"><table>
-            <thead><tr><th>Faculty</th><th>Dept</th><th>Type</th><th>Substitutions</th><th>Reason</th><th>Action</th></tr></thead><tbody>`;
+        let unifiedList = [];
 
-        if (leaves && leaves.length > 0) {
+        if (leaves && leaves.length) {
             leaves.forEach(l => {
                 let timeInfo = `${l.start_date} to ${l.end_date}`;
                 if (l.duration_type === 'Hours') {
                     timeInfo = `${l.start_date} (Hours: ${l.selected_hours})`;
                 }
 
-                // Format substitutions if present (HoD specific mostly)
                 let subHtml = '-';
                 if (l.substitutions && l.substitutions.length > 0) {
                     subHtml = l.substitutions.map(s => `<div>${s.sub_name}: <b style="color:${s.status == 'ACCEPTED' ? 'green' : 'orange'}">${s.status}</b></div>`).join('');
                 }
 
+                unifiedList.push({
+                    id: l.id,
+                    type: 'Leave (' + l.leave_type + ')',
+                    faculty: l.user_name || l.name,
+                    dept: l.department,
+                    timeInfo: timeInfo,
+                    reason: l.reason,
+                    substitutions: subHtml,
+                    actionType: 'leave',
+                    createdAt: new Date(l.created_at || Date.now()).getTime()
+                });
+            });
+        }
+
+        if (permissions && permissions.length) {
+            permissions.forEach(p => {
+                let timeInfo = `${p.permission_date} (${p.start_time.substring(0, 5)} - ${p.end_time.substring(0, 5)})`;
+                unifiedList.push({
+                    id: p.id,
+                    type: 'Permission',
+                    faculty: p.name,
+                    dept: p.department,
+                    timeInfo: timeInfo,
+                    reason: p.reason,
+                    substitutions: '-',
+                    actionType: 'permission',
+                    createdAt: new Date(p.created_at || Date.now()).getTime()
+                });
+            });
+        }
+
+        if (outpasses && outpasses.length) {
+            outpasses.forEach(o => {
+                let timeInfo = `${o.outpass_date} (Out: ${o.out_time.substring(0, 5)})`;
+                unifiedList.push({
+                    id: o.id,
+                    type: 'Outpass',
+                    faculty: o.name,
+                    dept: o.department,
+                    timeInfo: timeInfo,
+                    reason: o.reason,
+                    substitutions: '-',
+                    actionType: 'outpass',
+                    createdAt: new Date(o.created_at || Date.now()).getTime()
+                });
+            });
+        }
+
+        unifiedList.sort((a, b) => b.createdAt - a.createdAt);
+
+        let html = `<h2>Pending Approvals</h2><br><div class="table-container"><table>
+            <thead><tr><th>Faculty</th><th>Dept</th><th>Type / Details</th><th>Substitutions</th><th>Reason</th><th>Action</th></tr></thead><tbody>`;
+
+        if (unifiedList.length > 0) {
+            unifiedList.forEach(item => {
                 html += `<tr>
-                    <td data-label="Faculty">${escapeHtml(l.user_name || l.name)}</td>
-                    <td data-label="Dept">${escapeHtml(l.department)}</td>
-                    <td data-label="Type">${escapeHtml(l.leave_type)}</td>
-                    <td data-label="Substitutions"><small>${subHtml}</small></td>
-                    <td data-label="Reason">${escapeHtml(l.reason)}</td>
+                    <td data-label="Faculty">${escapeHtml(item.faculty)}</td>
+                    <td data-label="Dept">${escapeHtml(item.dept)}</td>
+                    <td data-label="Type / Details"><b>${escapeHtml(item.type)}</b><br><small>${escapeHtml(item.timeInfo)}</small></td>
+                    <td data-label="Substitutions"><small>${item.substitutions}</small></td>
+                    <td data-label="Reason">${escapeHtml(item.reason)}</td>
                     <td data-label="Action">
                          <div style="display:flex; gap:10px; justify-content: flex-end;">
-                            <button class="btn" style="width:auto; padding:8px 15px; background:green" onclick="approveLeave(${l.id}, 'Approved')">✓</button>
-                            <button class="btn" style="width:auto; padding:8px 15px; background:red" onclick="approveLeave(${l.id}, 'Rejected')">✗</button>
+                            <button class="btn" style="width:auto; padding:8px 15px; background:green" onclick="approveRequest(${item.id}, '${item.actionType}', 'Approved')">✓</button>
+                            <button class="btn" style="width:auto; padding:8px 15px; background:red" onclick="approveRequest(${item.id}, '${item.actionType}', 'Rejected')">✗</button>
                         </div>
                     </td>
                 </tr>`;
@@ -511,23 +632,25 @@ async function handleSignatureUpload(e) {
     // Manual fetch because apiCall handles JSON body by default
     try {
         const token = localStorage.getItem('token');
+        const csrfToken = localStorage.getItem('csrf_token');
+        const headers = { 'Authorization': `Bearer ${token}` };
+        if (csrfToken) headers['X-CSRF-Token'] = csrfToken;
+
         const res = await fetch(API_URL + '/upload_signature.php', {
             method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${token}`
-            },
+            headers: headers,
             body: formData
         });
         const data = await res.json();
 
         if (res.ok) {
-            alert('Signature Uploaded!');
+            showSuccess('Signature Uploaded!');
             renderView('signature'); // Refresh
         } else {
-            alert(data.error || 'Upload Failed');
+            showError(data.error || 'Upload Failed');
         }
     } catch (err) {
-        alert('Upload Error: ' + err.message);
+        showError('Upload Error: ' + err.message);
     }
 }
 
@@ -539,7 +662,7 @@ async function handleApplyLeave(e) {
 
     // Basic Date Validation
     if (!data.start_date || !data.end_date) {
-        alert("Please select both Start and End dates.");
+        showError("Please select both Start and End dates.");
         return;
     }
 
@@ -547,7 +670,7 @@ async function handleApplyLeave(e) {
     const end = new Date(data.end_date);
 
     if (end < start) {
-        alert("End Date cannot be before Start Date.");
+        showError("End Date cannot be before Start Date.");
         return;
     }
 
@@ -565,7 +688,7 @@ async function handleApplyLeave(e) {
                 // Optional Substitution: Only process if a substitute is selected
                 if (subId) {
                     if (subId == state.user.id) {
-                        alert(`You cannot substitute for yourself (Day ${d}, Period ${p}).`);
+                        showError(`You cannot substitute for yourself (Day ${d}, Period ${p}).`);
                         return;
                     }
                     // Map to 1-32 index (Day 1: 1-8, Day 2: 9-16, etc.)
@@ -580,39 +703,49 @@ async function handleApplyLeave(e) {
 
     const res = await apiCall('/leaves.php/apply', 'POST', data);
     if (!res.error) {
-        alert('Leave Applied Successfully!');
+        showSuccess('Leave Applied Successfully!');
         renderView('leaves');
     } else {
-        alert(res.error);
+        showError(res.error);
     }
 }
 
 async function actionSubstitution(id, status) {
     const verb = status === 'ACCEPTED' ? 'accept' : 'reject';
-    if (!confirm(`Are you sure you want to ${verb} this request?`)) return;
-    const res = await apiCall(`/leaves.php/substitutions/${id}/respond`, 'PUT', { status });
-    if (!res.error) {
-        renderView('substitutions');
-        fetchNotifications();
-    } else {
-        alert(res.error);
-    }
+    showConfirm(`Are you sure you want to ${verb} this request?`, async () => {
+        const res = await apiCall(`/leaves.php/substitutions/${id}/respond`, 'PUT', { status });
+        if (!res.error) {
+            renderView('substitutions');
+            fetchNotifications();
+        } else {
+            showError(res.error);
+        }
+    });
 }
 
-async function approveLeave(id, status) {
+async function approveRequest(id, type, status) {
     let role = state.user.role;
     let endpoint = '';
-    if (role === 'hod') endpoint = `/leaves.php/${id}/approve/hod`;
-    if (role === 'principal') endpoint = `/leaves.php/${id}/approve/principal`;
+
+    if (type === 'leave') {
+        if (role === 'hod') endpoint = `/leaves.php/${id}/approve/hod`;
+        if (role === 'principal') endpoint = `/leaves.php/${id}/approve/principal`;
+    } else if (type === 'permission') {
+        if (role === 'hod') endpoint = `/permissions.php/${id}/approve/hod`;
+        if (role === 'principal') endpoint = `/permissions.php/${id}/approve/principal`;
+    } else if (type === 'outpass') {
+        if (role === 'hod') endpoint = `/outpasses.php/${id}/approve/hod`;
+        if (role === 'principal') endpoint = `/outpasses.php/${id}/approve/principal`;
+    }
 
     const res = await apiCall(endpoint, 'PUT', { status });
     if (!res.error) {
-        if (res.pdf_url && role === 'principal') {
+        if (res.pdf_url && role === 'principal' && type === 'leave') {
             downloadPdf(id);
         }
         renderView('approvals');
     } else {
-        alert(res.error);
+        showError(res.error);
     }
 }
 
@@ -631,7 +764,7 @@ function updateLeaveDuration() {
     const end = new Date(endStr);
 
     if (end < start) {
-        alert("End Date cannot be before Start Date."); // Pop-up alert as requested
+        showError("End Date cannot be before Start Date."); // Pop-up alert as requested
         document.getElementById('end_date').value = ''; // Reset invalid date
         container.style.display = 'none';
         return;
@@ -703,22 +836,24 @@ async function handleCreateUser(e) {
     const data = Object.fromEntries(formData.entries());
     const res = await apiCall('/users.php/create', 'POST', data);
     if (!res.error) {
-        alert('User Created!');
+        showSuccess('User Created!');
         hideCreateUserModal();
         renderView('users');
     } else {
-        alert(res.error);
+        showError(res.error);
     }
 }
 
 async function deleteUser(id) {
-    if (!confirm('Delete this user?')) return;
-    await apiCall(`/users.php/${id}`, 'DELETE');
-    renderView('users');
+    showConfirm('Delete this user?', async () => {
+        await apiCall(`/users.php/${id}`, 'DELETE');
+        renderView('users');
+    });
 }
 
 async function downloadPdf(id) {
     if (!state.token) return;
+    showLoading('Generating PDF...');
     try {
         const response = await fetch(`${API_URL}/generate_pdf.php?id=${id}`, {
             method: 'GET',
@@ -736,18 +871,21 @@ async function downloadPdf(id) {
             a.click();
             a.remove();
             window.URL.revokeObjectURL(url);
+            closeLoading();
         } else {
+            closeLoading();
             const text = await response.text();
             let msg = text;
             try {
                 const json = JSON.parse(text);
                 msg = json.message || json.error || text;
             } catch (_) { }
-            alert('Failed to download PDF: ' + (msg || 'Unknown error'));
+            showError('Failed to download PDF: ' + (msg || 'Unknown error'));
         }
     } catch (e) {
         console.error(e);
-        alert('Download failed. Check your connection.');
+        closeLoading();
+        showError('Download failed. Check your connection.');
     }
 }
 
@@ -761,7 +899,7 @@ window.initDashboard = initDashboard;
 window.toggleNotifications = toggleNotifications;
 window.handleApplyLeave = handleApplyLeave;
 window.actionSubstitution = actionSubstitution;
-window.approveLeave = approveLeave;
+window.approveRequest = approveRequest;
 window.updateLeaveDuration = updateLeaveDuration;
 window.toggleHour = null; // Removed
 window.toggleDurationMode = null; // Removed
@@ -772,9 +910,32 @@ window.deleteUser = deleteUser;
 
 function toggleSidebar() {
     const sidebar = document.querySelector('.sidebar');
-    sidebar.classList.toggle('active');
+    const overlay = document.querySelector('.sidebar-overlay');
+    if (sidebar) sidebar.classList.toggle('active');
+    if (overlay) overlay.classList.toggle('active');
 }
 window.toggleSidebar = toggleSidebar;
+
+async function fetchAlerts() {
+    const data = await apiCall('/check_alerts.php');
+    if (data && data.pending_count !== undefined) {
+        const badge = document.getElementById('alerts-badge');
+        if (badge) {
+            badge.textContent = data.pending_count;
+            badge.style.display = data.pending_count > 0 ? 'block' : 'none';
+        }
+    }
+}
+
+function handleAlertClick() {
+    if (state.user.role === 'faculty') {
+        renderView('substitutions');
+    } else {
+        renderView('approvals');
+    }
+}
+window.handleAlertClick = handleAlertClick;
+window.fetchAlerts = fetchAlerts;
 
 export {
     login,
@@ -783,7 +944,7 @@ export {
     toggleNotifications,
     handleApplyLeave,
     actionSubstitution,
-    approveLeave,
+    approveRequest,
     updateLeaveDuration,
     showCreateUserModal,
     hideCreateUserModal,
@@ -791,10 +952,15 @@ export {
     deleteUser,
     downloadPdf,
     handleSignatureUpload,
-    markAllRead
+    markAllRead,
+    handleAlertClick,
+    toggleSidebar
 };
 
 window.markAllRead = markAllRead;
+window.markNotificationRead = markNotificationRead;
+window.toggleNotifications = toggleNotifications;
+window.toggleSidebar = toggleSidebar;
 
 // Init
 if (window.location.pathname.includes('dashboard.html')) {

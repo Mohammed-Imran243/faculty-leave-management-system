@@ -12,4 +12,16 @@ function create_notification($conn, $user_id, $message, $type = 'info') {
         return false;
     }
 }
+
+function isTeachingRole($role) {
+    if (!$role) return false;
+    $r = strtolower($role);
+    return in_array($r, ['faculty', 'assistant professor (ap)', 'associate professor', 'professor']);
+}
+
+function isAdministrativeRole($role) {
+    if (!$role) return false;
+    $r = strtolower($role);
+    return in_array($r, ['hod', 'principal', 'officer', 'admin']);
+}
 ?>

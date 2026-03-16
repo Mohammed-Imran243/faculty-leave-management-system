@@ -1,7 +1,9 @@
 <?php
-require_once '../config.php';
-require_once '../libs/SimpleJWT.php';
-require_once '../libs/audit.php';
+header('Content-Type: application/json');
+require_once '../../includes/config.php';
+require_once '../../includes/auth_guard.php';
+require_once '../../includes/helpers.php';
+require_once '../../includes/audit.php';
 
 $method = $_SERVER['REQUEST_METHOD'];
 
@@ -11,18 +13,10 @@ if ($method !== 'POST') {
     exit();
 }
 
-// Auth Check
-$token = JWT::get_bearer_token();
-$user = $token ? JWT::decode($token) : null;
+$user = $global_user;
 
-if (!$user) {
-    http_response_code(403);
-    echo json_encode(["error" => "Unauthorized"]);
-    exit();
-}
-
-// Role Check: Only HOD or Principal (or Admin)
-if (!in_array($user['role'], ['hod', 'principal', 'admin'])) {
+// Role Check: Only HOD or Principal (or Admin) - using helper
+if (!isAdministrativeRole($user['role'])) {
     http_response_code(403);
     echo json_encode(["error" => "Only HOD or Principal can upload signatures"]);
     exit();
@@ -81,4 +75,3 @@ if (move_uploaded_file($file['tmp_name'], $targetPath)) {
     http_response_code(500);
     echo json_encode(["error" => "Failed to move uploaded file"]);
 }
-?>

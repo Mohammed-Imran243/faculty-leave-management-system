@@ -1,22 +1,18 @@
 <?php
-require_once '../config.php';
+header('Content-Type: application/json');
+require_once '../../includes/config.php';
 
-require_once '../libs/SimpleJWT.php';
+require_once '../../includes/auth_guard.php';
 
 $method = $_SERVER['REQUEST_METHOD'];
 $path = isset($_SERVER['PATH_INFO']) ? $_SERVER['PATH_INFO'] : '/';
 
-$token = JWT::get_bearer_token();
-$user = $token ? JWT::decode($token) : null;
-
-if (!$user) {
-    http_response_code(403);
-    echo json_encode(["error" => "Unauthorized"]);
-    exit();
-}
+$user = $global_user;
 
 if ($method === 'GET' && $path === '/') {
     get_my_notifications($conn, $user);
+} elseif ($method === 'GET' && $path === '/unread-count') {
+    get_unread_count($conn, $user);
 } elseif ($method === 'PUT' && preg_match('/^\/(\d+)\/read$/', $path, $matches)) {
     mark_as_read($conn, $user, $matches[1]);
 } elseif ($method === 'PUT' && $path === '/read-all') {
@@ -33,6 +29,18 @@ function get_my_notifications($conn, $user) {
         $stmt = $conn->prepare("SELECT * FROM notifications WHERE user_id = ? ORDER BY is_read ASC, created_at DESC LIMIT 50");
         $stmt->execute([$user['id']]);
         echo json_encode($stmt->fetchAll(PDO::FETCH_ASSOC));
+    } catch (PDOException $e) {
+        http_response_code(500);
+        echo json_encode(["error" => "Database Error: " . $e->getMessage()]);
+    }
+}
+
+function get_unread_count($conn, $user) {
+    try {
+        $stmt = $conn->prepare("SELECT COUNT(*) FROM notifications WHERE user_id = ? AND is_read = 0");
+        $stmt->execute([$user['id']]);
+        $count = (int)$stmt->fetchColumn();
+        echo json_encode(["unread_count" => $count]);
     } catch (PDOException $e) {
         http_response_code(500);
         echo json_encode(["error" => "Database Error: " . $e->getMessage()]);

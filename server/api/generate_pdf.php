@@ -7,18 +7,15 @@ ini_set('display_errors', '0');
 ob_start();
 
 require_once __DIR__ . '/../vendor/autoload.php';
-require_once __DIR__ . '/../config.php';
-require_once __DIR__ . '/../libs/SimpleJWT.php';
-require_once __DIR__ . '/../libs/audit.php';
+require_once __DIR__ . '/../../includes/config.php';
+require_once __DIR__ . '/../../includes/auth_guard.php';
+require_once __DIR__ . '/../../includes/audit.php';
 
 ob_clean();
 
 try {
-    $token = JWT::get_bearer_token();
-    if (!$token) throw new Exception('Unauthorized', 401);
-
-    $user = JWT::decode($token);
-    if (!$user) throw new Exception('Invalid token', 401);
+    $user = $global_user;
+    if (!$user) throw new Exception('Unauthorized', 401);
 
     $leaveId = isset($_GET['id']) ? (int)$_GET['id'] : 0;
     if ($leaveId <= 0) throw new Exception('Invalid Leave ID', 400);
@@ -26,7 +23,7 @@ try {
     // Fetch Leave & User Details
     try {
         $stmt = $conn->prepare(
-            "SELECT l.*, u.name, u.role, u.department FROM leave_requests l
+            "SELECT l.*, u.name, u.role, u.department, u.signature_path FROM leave_requests l
              JOIN users u ON l.user_id = u.id WHERE l.id = ?"
         );
         $stmt->execute([$leaveId]);
@@ -46,10 +43,8 @@ try {
     ];
     $designation = isset($roleMap[$leave['role']]) ? $roleMap[$leave['role']] : ucfirst($leave['role']);
 
-    // Access Control
-    $canView = $user['id'] == $leave['user_id']
-        || in_array($user['role'], ['admin', 'principal'])
-        || ($user['role'] === 'hod' && $user['department'] === $leave['department']);
+    // Strict Access Control: ONLY the request owner can generate/download the PDF
+    $canView = ($user['id'] == $leave['user_id']);
     
     if (!$canView) throw new Exception('Access denied', 403);
 
@@ -58,7 +53,7 @@ try {
     // Fetch HOD Name
     $hodName = "The Head of Department";
     try {
-        $stmtHod = $conn->prepare("SELECT name FROM users WHERE role = 'hod' AND department = ? LIMIT 1");
+        $stmtHod = $conn->prepare("SELECT name FROM users WHERE LOWER(role) = 'hod' AND department = ? LIMIT 1");
         $stmtHod->execute([$leave['department']]);
         $hod = $stmtHod->fetch(PDO::FETCH_ASSOC);
         if ($hod) $hodName = $hod['name'];
@@ -128,18 +123,19 @@ try {
     $hodSigImg = '';
     if ($leave['hod_status'] === 'Approved') {
         $hodDate = 'Date: ' . date('d.m.Y', strtotime($hodApproval['created_at']));
+        $timeStr = date('H:i:s', strtotime($hodApproval['created_at']));
         $deptName = strtoupper($leave['department']);
         
         $hodSigImg = '
-        <table style="border: 3px solid #006400; color: #006400; font-family: sans-serif; font-weight: bold; text-align: center; width: 180px; border-collapse: separate; border-spacing: 0; border-radius: 8px;">
+        <table style="border: 2px solid #006400; color: #006400; font-family: sans-serif; font-weight: bold; text-align: center; width: 180px; border-collapse: separate; border-spacing: 0; border-radius: 4px; box-shadow: inset 0 0 2px #006400;">
             <tr>
-                <td style="border-bottom: 1px solid #006400; padding: 5px; font-size: 14pt;">APPROVED</td>
+                <td style="border-bottom: 2px solid #006400; padding: 5px; font-size: 14pt; letter-spacing: 2px;">APPROVED</td>
             </tr>
             <tr>
-                <td style="padding: 5px; font-size: 9pt; line-height: 1.2;">
+                <td style="padding: 5px; font-size: 8pt; line-height: 1.3;">
                     HEAD OF THE DEPARTMENT<br>
                     ' . $deptName . '<br>
-                    ' . $hodDate . '
+                    ' . $hodDate . ' ' . $timeStr . '
                 </td>
             </tr>
         </table>';
@@ -149,17 +145,18 @@ try {
     $princSigImg = '';
     if ($leave['principal_status'] === 'Approved') {
          $princDate = 'Date: ' . date('d.m.Y', strtotime($principalApproval['created_at']));
+         $timeStr = date('H:i:s', strtotime($principalApproval['created_at']));
          
          $princSigImg = '
-         <table style="border: 3px solid #006400; color: #006400; font-family: sans-serif; font-weight: bold; text-align: center; width: 180px; border-collapse: separate; border-spacing: 0; border-radius: 8px;">
+         <table style="border: 2px solid #006400; color: #006400; font-family: sans-serif; font-weight: bold; text-align: center; width: 180px; border-collapse: separate; border-spacing: 0; border-radius: 4px; box-shadow: inset 0 0 2px #006400;">
             <tr>
-                <td style="border-bottom: 1px solid #006400; padding: 5px; font-size: 14pt;">APPROVED</td>
+                <td style="border-bottom: 2px solid #006400; padding: 5px; font-size: 14pt; letter-spacing: 2px;">APPROVED</td>
             </tr>
             <tr>
-                <td style="padding: 5px; font-size: 8pt; line-height: 1.2;">
+                <td style="padding: 5px; font-size: 8pt; line-height: 1.3;">
                     PRINCIPAL<br>
                     C. Abdul Hakeem College of Engg & Tech<br>
-                    ' . $princDate . '
+                    ' . $princDate . ' ' . $timeStr . '
                 </td>
             </tr>
          </table>';
@@ -183,9 +180,19 @@ try {
         if ($days > 1) $leavePeriodStr .= " to " . $endDate;
     }
 
-    // Logo Path
-    $logoPath = __DIR__ . '/../../client/header_logo.png'; 
+    // Faculty Signature
+    $facultySigImg = '(Signature of Staff)';
+    if (!empty($leave['signature_path'])) {
+        $sigPath = __DIR__ . '/../../assets/signatures/' . $leave['signature_path'];
+        if (file_exists($sigPath)) {
+            $facultySigImg = '<img src="../../assets/signatures/' . htmlspecialchars($leave['signature_path']) . '" height="60">';
+        }
+    }
     
+    // Check if OD / ED
+    $upperType = strtoupper($leave['leave_type']);
+    $isOD = ($upperType === 'OD' || $upperType === 'ED' || strpos($upperType, 'DUTY') !== false);
+
     // HTML Construction
     $html = '
     <html>
@@ -195,10 +202,17 @@ try {
             table { width: 100%; border-collapse: collapse; }
             td, th { vertical-align: top; padding: 2px; }
             
-            .header-table td { vertical-align: middle; text-align: center; }
-            .college-name { font-size: 14pt; font-weight: bold; text-transform: uppercase; }
-            .college-addr { font-size: 10pt; }
-            .form-title { font-size: 12pt; font-weight: bold; text-decoration: underline; margin-top: 10px; }
+            .college-name { font-size: 16pt; font-weight: bold; text-transform: uppercase; margin-bottom:5px; text-align: center; color: #800000; }
+            .college-addr { font-size: 12pt; text-align: center; color: #800000; }
+            
+            .form-title { 
+                font-size: 14pt; 
+                font-weight: bold; 
+                text-decoration: underline; 
+                margin-top: 15px; 
+                text-align: center;
+                color: #800000;
+            }
             
             .content-table { margin-top: 20px; width: 100%; }
             .content-table td { padding: 5px; }
@@ -214,28 +228,78 @@ try {
             
             .footer-sig { margin-top: 40px; width: 100%; }
             .sig-box { text-align: center; width: 45%; vertical-align: bottom; }
-            .sig-img-container { height: 60px; display: flex; align-items: flex-end; justify-content: center; }
+            .sig-img-container { height: 75px; display: flex; align-items: flex-end; justify-content: center; }
             
             .footer-text { position: fixed; bottom: 0; width: 100%; text-align: center; font-size: 8pt; color: #666; }
+            
+            /* OD Specific Styles */
+            .od-table { width: 100%; margin-top: 15px; font-size: 11pt; border-collapse: separate; border-spacing: 0 10px; }
+            .od-label { font-weight: bold; width: 30%; }
+            .od-value { width: 70%; border-bottom: 1px dotted #000; }
         </style>
     </head>
-    <body>
+    <body style="padding-top: 10px;">
     
         <!-- Header -->
-        <table class="header-table">
+        <div style="text-align: center; margin-bottom: 5px;">
+            <div class="college-name">C ABDUL HAKEEM COLLEGE OF ENGINEERING & TECHNOLOGY</div>
+            <div class="college-addr">Melvisharam – 632 509</div>
+        </div>
+        
+        <hr style="height: 1px; border: 0; border-top: 2px solid #800000; margin: 10px 0 15px 0;">
+    ';
+
+    if ($isOD) {
+        $html .= '
+        <div class="form-title">Permission for Other Duty</div>
+
+        <table class="od-table">
             <tr>
-                <td width="15%" style="text-align: left;">
-                    <img src="' . $logoPath . '" width="80">
-                </td>
-                <td width="85%">
-                    <div class="college-name">C. ABDUL HAKEEM COLLEGE OF ENGINEERING & TECHNOLOGY</div>
-                    <div class="college-addr">Melvisharam - 632 509.</div>
-                    <div class="form-title">LEAVE APPLICATION</div>
-                </td>
+                <td class="od-label">From :</td>
+                <td class="od-value"><b>' . htmlspecialchars($leave['name']) . '</b></td>
+            </tr>
+            <tr>
+                <td class="od-label">Designation :</td>
+                <td class="od-value">' . htmlspecialchars($designation) . '</td>
+            </tr>
+            <tr>
+                <td class="od-label">Department :</td>
+                <td class="od-value">' . htmlspecialchars($leave['department']) . '</td>
+            </tr>
+            <tr>
+                <td class="od-label">To :</td>
+                <td><b>The Correspondent / Principal</b><br><small>C. Abdul Hakeem College of Engg. & Tech.</small></td>
+            </tr>
+            <tr>
+                <td class="od-label">Through :</td>
+                <td class="od-value"><b>The Head of Department (' . htmlspecialchars($hodName) . ')</b></td>
+            </tr>
+            <tr>
+                <td class="od-label">Date :</td>
+                <td class="od-value">' . $dateOfApp . '</td>
+            </tr>
+            <tr>
+                <td class="od-label">Leave Duration / Days :</td>
+                <td class="od-value">' . $leavePeriodStr . ' (' . $durationStr . ' days)</td>
+            </tr>
+            <tr>
+                <td class="od-label">Reason (Official Duty) :</td>
+                <td class="od-value">' . htmlspecialchars($leave['reason']) . '</td>
             </tr>
         </table>
-        
-        <hr style="height: 1px; border: 0; border-top: 2px solid #000; margin: 5px 0 15px 0;">
+
+        <div style="margin-top: 30px; overflow: hidden;">
+            <div style="float: right; text-align: center; width: 250px;">
+                Yours faithfully,<br><br>
+                <div style="height: 50px; display: flex; align-items: flex-end; justify-content: center;">' . $facultySigImg . '</div>
+                <br>
+                <b>' . htmlspecialchars($leave['name']) . '</b>
+            </div>
+        </div>
+        ';
+    } else {
+        $html .= '
+        <div class="form-title">LEAVE APPLICATION</div>
 
         <!-- Applicant Details -->
         <table class="content-table">
@@ -282,13 +346,18 @@ try {
         </div>
 
         <div style="margin-top: 20px; overflow: hidden;">
-            <div style="float: right; text-align: center; width: 200px;">
+            <div style="float: right; text-align: center; width: 250px;">
                 Thanking You,<br><br>
                 Yours faithfully,<br><br>
+                <div style="height: 50px; display: flex; align-items: flex-end; justify-content: center;">' . $facultySigImg . '</div>
+                <br>
                 <b>' . htmlspecialchars($leave['name']) . '</b>
             </div>
         </div>
+        ';
+    }
 
+    $html .= '
         <!-- Class Arrangements -->
         <div style="margin-top: 10px; font-weight: bold;">Class arrangements made:</div>
         
