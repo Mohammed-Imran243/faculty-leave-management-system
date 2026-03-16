@@ -7,8 +7,8 @@ ini_set('display_errors', '0');
 ob_start();
 
 require_once __DIR__ . '/../vendor/autoload.php';
-require_once __DIR__ . '/../../includes/config.php';
-require_once __DIR__ . '/../../includes/auth_guard.php';
+require_once __DIR__ . '/../core/bootstrap.php';
+require_once __DIR__ . '/../core/auth_guard.php';
 
 ob_clean();
 
@@ -58,9 +58,9 @@ try {
     // Faculty Signature
     $facultySigImg = '(Signature of Staff)';
     if (!empty($perm['signature_path'])) {
-        $sigPath = __DIR__ . '/../../assets/signatures/' . $perm['signature_path'];
-        if (file_exists($sigPath)) {
-            $facultySigImg = '<img src="../../assets/signatures/' . htmlspecialchars($perm['signature_path']) . '" height="60">';
+        $sigPath = __DIR__ . '/../' . $perm['signature_path'];
+        if ($perm['signature_path'] && file_exists($sigPath)) {
+            $facultySigImg = '<img src="../' . htmlspecialchars($perm['signature_path']) . '" height="60">';
         }
     }
     // --- Official Approval Stamps ---

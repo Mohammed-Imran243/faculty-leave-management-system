@@ -33,3 +33,120 @@ Stack trace:
 [11-Mar-2026 06:14:36 Europe/Berlin] PHP Notice:  session_start(): Ignoring session_start() because a session is already active in C:\xampp\htdocs\faculty-leave-management-system-cr\server\api\rules.php on line 22
 [11-Mar-2026 06:14:51 Europe/Berlin] PHP Notice:  session_start(): Ignoring session_start() because a session is already active in C:\xampp\htdocs\faculty-leave-management-system-cr\server\api\rules.php on line 22
 [11-Mar-2026 06:15:00 Europe/Berlin] PHP Notice:  session_start(): Ignoring session_start() because a session is already active in C:\xampp\htdocs\faculty-leave-management-system-cr\server\api\rules.php on line 22
+[16-Mar-2026 09:31:21 Europe/Berlin] PHP Fatal error:  Uncaught Error: Class "App\Core\Config" not found in C:\xampp\htdocs\faculty-leave-management-system-cr\includes\bootstrap.php:8
+Stack trace:
+#0 C:\xampp\htdocs\faculty-leave-management-system-cr\includes\auth_guard.php(4): require_once()
+#1 C:\xampp\htdocs\faculty-leave-management-system-cr\server\api\notifications.php(5): require_once('C:\\xampp\\htdocs...')
+#2 {main}
+  thrown in C:\xampp\htdocs\faculty-leave-management-system-cr\includes\bootstrap.php on line 8
+[16-Mar-2026 09:31:21 Europe/Berlin] PHP Fatal error:  Uncaught Error: Class "App\Core\Config" not found in C:\xampp\htdocs\faculty-leave-management-system-cr\includes\bootstrap.php:8
+Stack trace:
+#0 C:\xampp\htdocs\faculty-leave-management-system-cr\includes\auth_guard.php(4): require_once()
+#1 C:\xampp\htdocs\faculty-leave-management-system-cr\server\api\notifications.php(5): require_once('C:\\xampp\\htdocs...')
+#2 {main}
+  thrown in C:\xampp\htdocs\faculty-leave-management-system-cr\includes\bootstrap.php on line 8
+[16-Mar-2026 09:32:13 Europe/Berlin] PHP Fatal error:  Uncaught Error: Class "App\Core\Config" not found in C:\xampp\htdocs\faculty-leave-management-system-cr\includes\bootstrap.php:8
+Stack trace:
+#0 C:\xampp\htdocs\faculty-leave-management-system-cr\includes\auth_guard.php(4): require_once()
+#1 C:\xampp\htdocs\faculty-leave-management-system-cr\server\api\notifications.php(5): require_once('C:\\xampp\\htdocs...')
+#2 {main}
+  thrown in C:\xampp\htdocs\faculty-leave-management-system-cr\includes\bootstrap.php on line 8
+[16-Mar-2026 09:32:13 Europe/Berlin] PHP Fatal error:  Uncaught Error: Class "App\Core\Config" not found in C:\xampp\htdocs\faculty-leave-management-system-cr\includes\bootstrap.php:8
+Stack trace:
+#0 C:\xampp\htdocs\faculty-leave-management-system-cr\includes\auth_guard.php(4): require_once()
+#1 C:\xampp\htdocs\faculty-leave-management-system-cr\server\api\notifications.php(5): require_once('C:\\xampp\\htdocs...')
+#2 {main}
+  thrown in C:\xampp\htdocs\faculty-leave-management-system-cr\includes\bootstrap.php on line 8
+[16-Mar-2026 09:32:15 Europe/Berlin] PHP Fatal error:  Uncaught Error: Class "App\Core\Config" not found in C:\xampp\htdocs\faculty-leave-management-system-cr\includes\bootstrap.php:8
+Stack trace:
+#0 C:\xampp\htdocs\faculty-leave-management-system-cr\includes\auth_guard.php(4): require_once()
+#1 C:\xampp\htdocs\faculty-leave-management-system-cr\server\api\notifications.php(5): require_once('C:\\xampp\\htdocs...')
+#2 {main}
+  thrown in C:\xampp\htdocs\faculty-leave-management-system-cr\includes\bootstrap.php on line 8
+[16-Mar-2026 09:32:15 Europe/Berlin] PHP Fatal error:  Uncaught Error: Class "App\Core\Config" not found in C:\xampp\htdocs\faculty-leave-management-system-cr\includes\bootstrap.php:8
+Stack trace:
+#0 C:\xampp\htdocs\faculty-leave-management-system-cr\includes\auth_guard.php(4): require_once()
+#1 C:\xampp\htdocs\faculty-leave-management-system-cr\server\api\notifications.php(5): require_once('C:\\xampp\\htdocs...')
+#2 {main}
+  thrown in C:\xampp\htdocs\faculty-leave-management-system-cr\includes\bootstrap.php on line 8
+[16-Mar-2026 09:32:45 Europe/Berlin] PHP Fatal error:  Uncaught Error: Class "App\Core\Config" not found in C:\xampp\htdocs\faculty-leave-management-system-cr\includes\bootstrap.php:8
+Stack trace:
+#0 C:\xampp\htdocs\faculty-leave-management-system-cr\includes\auth_guard.php(4): require_once()
+#1 C:\xampp\htdocs\faculty-leave-management-system-cr\server\api\notifications.php(5): require_once('C:\\xampp\\htdocs...')
+#2 {main}
+  thrown in C:\xampp\htdocs\faculty-leave-management-system-cr\includes\bootstrap.php on line 8
+[16-Mar-2026 09:32:46 Europe/Berlin] PHP Fatal error:  Uncaught Error: Class "App\Core\Config" not found in C:\xampp\htdocs\faculty-leave-management-system-cr\includes\bootstrap.php:8
+Stack trace:
+#0 C:\xampp\htdocs\faculty-leave-management-system-cr\includes\auth_guard.php(4): require_once()
+#1 C:\xampp\htdocs\faculty-leave-management-system-cr\server\api\notifications.php(5): require_once('C:\\xampp\\htdocs...')
+#2 {main}
+  thrown in C:\xampp\htdocs\faculty-leave-management-system-cr\includes\bootstrap.php on line 8
+[16-Mar-2026 09:33:15 Europe/Berlin] PHP Fatal error:  Uncaught Error: Class "App\Core\Config" not found in C:\xampp\htdocs\faculty-leave-management-system-cr\includes\bootstrap.php:8
+Stack trace:
+#0 C:\xampp\htdocs\faculty-leave-management-system-cr\includes\auth_guard.php(4): require_once()
+#1 C:\xampp\htdocs\faculty-leave-management-system-cr\server\api\notifications.php(5): require_once('C:\\xampp\\htdocs...')
+#2 {main}
+  thrown in C:\xampp\htdocs\faculty-leave-management-system-cr\includes\bootstrap.php on line 8
+[16-Mar-2026 09:33:16 Europe/Berlin] PHP Fatal error:  Uncaught Error: Class "App\Core\Config" not found in C:\xampp\htdocs\faculty-leave-management-system-cr\includes\bootstrap.php:8
+Stack trace:
+#0 C:\xampp\htdocs\faculty-leave-management-system-cr\includes\auth_guard.php(4): require_once()
+#1 C:\xampp\htdocs\faculty-leave-management-system-cr\server\api\notifications.php(5): require_once('C:\\xampp\\htdocs...')
+#2 {main}
+  thrown in C:\xampp\htdocs\faculty-leave-management-system-cr\includes\bootstrap.php on line 8
+[16-Mar-2026 09:33:45 Europe/Berlin] PHP Fatal error:  Uncaught Error: Class "App\Core\Config" not found in C:\xampp\htdocs\faculty-leave-management-system-cr\includes\bootstrap.php:8
+Stack trace:
+#0 C:\xampp\htdocs\faculty-leave-management-system-cr\includes\auth_guard.php(4): require_once()
+#1 C:\xampp\htdocs\faculty-leave-management-system-cr\server\api\notifications.php(5): require_once('C:\\xampp\\htdocs...')
+#2 {main}
+  thrown in C:\xampp\htdocs\faculty-leave-management-system-cr\includes\bootstrap.php on line 8
+[16-Mar-2026 09:33:46 Europe/Berlin] PHP Fatal error:  Uncaught Error: Class "App\Core\Config" not found in C:\xampp\htdocs\faculty-leave-management-system-cr\includes\bootstrap.php:8
+Stack trace:
+#0 C:\xampp\htdocs\faculty-leave-management-system-cr\includes\auth_guard.php(4): require_once()
+#1 C:\xampp\htdocs\faculty-leave-management-system-cr\server\api\notifications.php(5): require_once('C:\\xampp\\htdocs...')
+#2 {main}
+  thrown in C:\xampp\htdocs\faculty-leave-management-system-cr\includes\bootstrap.php on line 8
+[16-Mar-2026 09:34:15 Europe/Berlin] PHP Fatal error:  Uncaught Error: Class "App\Core\Config" not found in C:\xampp\htdocs\faculty-leave-management-system-cr\includes\bootstrap.php:8
+Stack trace:
+#0 C:\xampp\htdocs\faculty-leave-management-system-cr\includes\auth_guard.php(4): require_once()
+#1 C:\xampp\htdocs\faculty-leave-management-system-cr\server\api\notifications.php(5): require_once('C:\\xampp\\htdocs...')
+#2 {main}
+  thrown in C:\xampp\htdocs\faculty-leave-management-system-cr\includes\bootstrap.php on line 8
+[16-Mar-2026 09:34:16 Europe/Berlin] PHP Fatal error:  Uncaught Error: Class "App\Core\Config" not found in C:\xampp\htdocs\faculty-leave-management-system-cr\includes\bootstrap.php:8
+Stack trace:
+#0 C:\xampp\htdocs\faculty-leave-management-system-cr\includes\auth_guard.php(4): require_once()
+#1 C:\xampp\htdocs\faculty-leave-management-system-cr\server\api\notifications.php(5): require_once('C:\\xampp\\htdocs...')
+#2 {main}
+  thrown in C:\xampp\htdocs\faculty-leave-management-system-cr\includes\bootstrap.php on line 8
+[2026-03-16 09:46:53] syntax error, unexpected token "public" in C:\xampp\htdocs\faculty-leave-management-system-cr\src\Repositories\LeaveRepository.php:91
+#0 C:\xampp\htdocs\faculty-leave-management-system-cr\server\api\leaves.php(13): {closure}('App\\Repositorie...')
+#1 {main}
+
+[2026-03-16 10:10:46] SQLSTATE[42S22]: Column not found: 1054 Unknown column 'status' in 'field list' in C:\xampp\htdocs\faculty-leave-management-system-cr\scripts\qa_discover.php:23
+#0 C:\xampp\htdocs\faculty-leave-management-system-cr\scripts\qa_discover.php(23): PDO->query('SELECT id, user...')
+#1 {main}
+
+[2026-03-16 10:11:41] syntax error, unexpected token "public" in C:\xampp\htdocs\faculty-leave-management-system-cr\server\repositories\LeaveRepository.php:91
+#0 C:\xampp\htdocs\faculty-leave-management-system-cr\scripts\qa_functional_test.php(22): {closure}('App\\Repositorie...')
+#1 {main}
+
+[2026-03-16 10:14:50] Cannot modify header information - headers already sent by (output started at C:\xampp\htdocs\faculty-leave-management-system-cr\scripts\qa_audit_test.php:6) in C:\xampp\htdocs\faculty-leave-management-system-cr\server\api\users.php:2
+#0 [internal function]: App\Core\ExceptionHandler::handleError(2, 'Cannot modify h...', 'C:\\xampp\\htdocs...', 2)
+#1 C:\xampp\htdocs\faculty-leave-management-system-cr\server\api\users.php(2): header('Content-Type: a...')
+#2 C:\xampp\htdocs\faculty-leave-management-system-cr\scripts\qa_audit_test.php(18): include('C:\\xampp\\htdocs...')
+#3 {main}
+
+[2026-03-16 10:23:26] Cannot modify header information - headers already sent by (output started at C:\xampp\htdocs\faculty-leave-management-system-cr\scripts\qa_closure_verify.php:7) in C:\xampp\htdocs\faculty-leave-management-system-cr\server\api\manage_user.php:2
+#0 [internal function]: App\Core\ExceptionHandler::handleError(2, 'Cannot modify h...', 'C:\\xampp\\htdocs...', 2)
+#1 C:\xampp\htdocs\faculty-leave-management-system-cr\server\api\manage_user.php(2): header('Content-Type: a...')
+#2 C:\xampp\htdocs\faculty-leave-management-system-cr\scripts\qa_closure_verify.php(18): include('C:\\xampp\\htdocs...')
+#3 {main}
+
+[2026-03-16 10:27:43] Call to undefined method App\Repositories\LeaveRepository::getUserLeaves() in C:\xampp\htdocs\faculty-leave-management-system-cr\server\api\leaves.php:25
+#0 {main}
+
+[2026-03-16 10:27:47] Call to undefined method App\Repositories\LeaveRepository::getUserLeaves() in C:\xampp\htdocs\faculty-leave-management-system-cr\server\api\leaves.php:25
+#0 {main}
+
+[2026-03-16 10:28:49] Call to undefined method App\Repositories\LeaveRepository::getUserLeaves() in C:\xampp\htdocs\faculty-leave-management-system-cr\server\api\leaves.php:25
+#0 {main}
+

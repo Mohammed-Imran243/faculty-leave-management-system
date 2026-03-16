@@ -1,8 +1,8 @@
 <?php
 header('Content-Type: application/json');
-require_once '../../includes/config.php';
-require_once '../../includes/auth_guard.php';
-require_once '../../includes/audit.php';
+require_once __DIR__ . '/../core/bootstrap.php';
+require_once __DIR__ . '/../core/auth_guard.php';
+require_once __DIR__ . '/../core/audit.php';
 
 $method = $_SERVER['REQUEST_METHOD'];
 

@@ -1,8 +1,8 @@
 <?php
 header('Content-Type: application/json');
-require_once '../../includes/config.php';
-require_once '../../includes/auth_guard.php';
-require_once '../../includes/helpers.php';
+require_once __DIR__ . '/../core/bootstrap.php';
+require_once __DIR__ . '/../core/auth_guard.php';
+require_once __DIR__ . '/../core/helpers.php';
 
 $method = $_SERVER['REQUEST_METHOD'];
 $path = isset($_SERVER['PATH_INFO']) ? $_SERVER['PATH_INFO'] : '/';

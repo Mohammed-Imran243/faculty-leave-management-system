@@ -1,14 +1,33 @@
 const API_URL = '../server/api';
 
+// --- safeStorage Helper ---
+const safeStorage = {
+    getItem: (key) => {
+        try { return localStorage.getItem(key); }
+        catch (e) { console.warn(`Storage access blocked for ${key}`); return null; }
+    },
+    setItem: (key, value) => {
+        try { localStorage.setItem(key, value); }
+        catch (e) { console.warn(`Failed to save ${key} to storage`); }
+    },
+    clear: () => {
+        try { localStorage.clear(); }
+        catch (e) { console.warn('Failed to clear storage'); }
+    }
+};
+
 const state = {
-    user: JSON.parse(localStorage.getItem('user')) || null,
-    token: localStorage.getItem('token') || null,
-    csrf: localStorage.getItem('csrf') || null,
+    user: JSON.parse(safeStorage.getItem('user')) || null,
+    token: safeStorage.getItem('token') || null,
+    csrf: safeStorage.getItem('csrf') || null,
     notifications: [],
     currentView: null,
     cache: {},
-    facultyCache: null
+    facultyCache: null,
+    usersPage: 1
 };
+
+
 
 // --- Helpers ---
 function isTeachingRole(role) {
@@ -130,9 +149,9 @@ async function login(username, password) {
             state.user = data.user;
             state.csrf = data.csrf_token;
 
-            localStorage.setItem('token', data.token);
-            localStorage.setItem('user', JSON.stringify(data.user));
-            if (data.csrf_token) localStorage.setItem('csrf', data.csrf_token);
+            safeStorage.setItem('token', data.token);
+            safeStorage.setItem('user', JSON.stringify(data.user));
+            if (data.csrf_token) safeStorage.setItem('csrf', data.csrf_token);
 
             window.location.href = 'dashboard.html';
         } else {
@@ -144,7 +163,7 @@ async function login(username, password) {
 }
 
 function logout() {
-    localStorage.clear();
+    safeStorage.clear();
     state.token = null;
     state.user = null;
     window.location.href = 'index.html';
@@ -203,7 +222,7 @@ window.toggleSidebar = function() {
 };
 
 async function fetchNotifications() {
-    const notifs = await apiCall('/notifications.php/');
+    const notifs = await apiCall('/notifications.php');
     if (notifs && Array.isArray(notifs)) {
         state.notifications = notifs;
         updateNotificationUI();
@@ -316,8 +335,8 @@ function updateSidebarHighlight(viewId) {
 }
 
 async function renderView(viewId) {
-    if (state.currentView === viewId) {
-        return; // Prevent duplicate rendering if already active
+    if (state.currentView === viewId && arguments.length === 1) {
+        return; // Prevent duplicate rendering if already active, unless parameters are provided
     }
     state.currentView = viewId;
     updateSidebarHighlight(viewId);
@@ -739,43 +758,94 @@ async function renderView(viewId) {
 
     // -- Admin: Users --
     if (viewId === 'users' && role === 'admin') {
+        const page = arguments[1] || 1;
+        const search = arguments[2] || '';
+        const dept = arguments[3] || '';
+        
         showLoader();
-        const users = await apiCall('/users.php/');
-        if (!users) return;
+        const response = await apiCall(`/users.php?page=${page}&limit=20&search=${encodeURIComponent(search)}&dept=${encodeURIComponent(dept)}`);
+        if (!response || !response.users) return;
+
+        const users = response.users;
+        const totalPages = response.total_pages;
 
         let html = `
             <div class="card">
-                <div class="card-header">
-                    <h3 class="card-title">User Management</h3>
+                <div class="card-header" style="flex-wrap: wrap; gap: 15px;">
+                    <h3 class="card-title">User Management (${response.total} Users)</h3>
+                    <div class="search-filters" style="display: flex; gap: 10px; flex-grow: 1; align-items: center;">
+                        <input type="text" id="adminUserSearch" class="form-control" placeholder="Search by name or code..." value="${escapeHtml(search)}" style="max-width: 250px;">
+                        <select id="adminUserDept" class="form-control" style="max-width: 150px;">
+                            <option value="">All Departments</option>
+                            <option value="CSE" ${dept === 'CSE' ? 'selected' : ''}>CSE</option>
+                            <option value="ECE" ${dept === 'ECE' ? 'selected' : ''}>ECE</option>
+                            <option value="ME" ${dept === 'ME' ? 'selected' : ''}>ME</option>
+                            <option value="CIVIL" ${dept === 'CIVIL' ? 'selected' : ''}>Civil</option>
+                        </select>
+                        <button class="btn btn-secondary btn-sm" onclick="filterAdminUsers()">Search</button>
+                    </div>
                     <button class="btn btn-primary btn-sm" onclick="showCreateUserModal()">+ Add User</button>
                 </div>
                 <div class="table-responsive">
                     <table>
                         <thead>
                             <tr>
-                                <th>Name</th>
-                                <th>Role / Dept</th>
+                                <th>Faculty Name</th>
+                                <th>Emp Code</th>
+                                <th>Designation</th>
+                                <th>Role</th>
                                 <th>Action</th>
                             </tr>
                         </thead>
                         <tbody>`;
         
+        if (users.length === 0) {
+            html += `<tr><td colspan="5" style="text-align:center; padding: 20px;">No users found.</td></tr>`;
+        }
+
         users.forEach(u => {
             html += `
                 <tr>
                     <td><strong>${escapeHtml(u.name)}</strong></td>
+                    <td>${escapeHtml(u.employee_code || '-')}</td>
+                    <td>${escapeHtml(u.designation || '-')}</td>
+                    <td><span class="badge badge-secondary">${escapeHtml(u.role)}</span></td>
                     <td>
-                        <span class="badge badge-secondary">${escapeHtml(u.role)}</span><br>
-                        <small class="text-muted">${escapeHtml(u.department || '-')}</small>
-                    </td>
-                    <td>
-                        <button class="btn btn-sm btn-primary" onclick="editUser(${u.id})" style="margin-right:5px; background-color:#3b82f6;"><i class="fas fa-edit"></i></button>
-                        <button class="btn btn-sm btn-secondary" onclick="deleteUser(${u.id})"><i class="fas fa-trash"></i></button>
+                        <div style="display:flex; gap:5px;">
+                            <button class="btn btn-sm btn-primary" onclick="editUser(${u.id}, ${page})" title="Edit"><i class="fas fa-edit"></i></button>
+                            <button class="btn btn-sm btn-secondary" onclick="deleteUser(${u.id}, ${page})" title="Delete"><i class="fas fa-trash"></i></button>
+                        </div>
                     </td>
                 </tr>`;
         });
-        html += `</tbody></table></div></div>`;
+        html += `</tbody></table></div>`;
+
+        // Pagination Controls
+        if (totalPages > 1) {
+            html += `
+                <div class="pagination" style="margin-top: 20px; display: flex; justify-content: center; gap: 10px; padding: 10px;">
+                    <button class="btn btn-sm ${page <= 1 ? 'btn-disabled' : 'btn-secondary'}" 
+                            ${page <= 1 ? 'disabled' : ''} 
+                            onclick="renderView('users', ${page - 1}, '${search}', '${dept}')">
+                        <i class="fas fa-chevron-left"></i> Prev
+                    </button>
+                    <span style="align-self: center; font-weight: 600;">Page ${page} of ${totalPages}</span>
+                    <button class="btn btn-sm ${page >= totalPages ? 'btn-disabled' : 'btn-secondary'}" 
+                            ${page >= totalPages ? 'disabled' : ''} 
+                            onclick="renderView('users', ${page + 1}, '${search}', '${dept}')">
+                        Next <i class="fas fa-chevron-right"></i>
+                    </button>
+                </div>`;
+        }
+
+        html += `</div>`;
         container.innerHTML = html;
+
+        // Add event listener for Enter key on search input
+        document.getElementById('adminUserSearch').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') filterAdminUsers();
+        });
+
         return;
     }
 
@@ -1133,13 +1203,13 @@ async function handleSignatureUpload(e) {
 
     // Manual fetch because apiCall handles JSON body by default
     try {
-        const token = localStorage.getItem('token');
+        const token = safeStorage.getItem('token');
         const res = await fetch(API_URL + '/upload_signature.php', {
             method: 'POST',
             credentials: 'same-origin',
             headers: {
                 'Authorization': `Bearer ${token}`,
-                'X-CSRF-Token': localStorage.getItem('csrf') || ''
+                'X-CSRF-Token': safeStorage.getItem('csrf') || ''
             },
             body: formData
         });
@@ -1260,7 +1330,9 @@ function hideCreateUserModal() {
     document.getElementById('password_input').required = true;
 }
 
-window.editUser = async function(userId) {
+window.editUser = async function(userId, page) {
+    state.usersPage = page;
+
     // Show modal
     document.getElementById('createUserModal').style.display = 'flex';
     document.getElementById('userModalTitle').textContent = 'Update User';
@@ -1271,9 +1343,13 @@ window.editUser = async function(userId) {
     document.getElementById('passwordHelp').style.display = 'block';
     document.getElementById('password_input').required = false;
 
-    // Fetch user details or use existing data if available (for now we fetch to be fresh)
-    const users = await apiCall('/users.php/');
-    const user = users.find(u => u.id == userId);
+    // Fetch user details - since response is now paginated, we search for the user
+    // To be safe, we can fetch all or just use the current page data if they are there.
+    // For now, let's just fetch the current page.
+    const response = await apiCall(`/users.php?page=${page}&limit=20`);
+    if (!response || !response.users) return;
+    const user = response.users.find(u => u.id == userId);
+
     
     if (user) {
         document.getElementById('employee_code').value = user.employee_code || '';
@@ -1306,18 +1382,31 @@ async function handleCreateUser(e) {
     if (res && !res.error) {
         showToast(mode === 'update' ? 'User updated successfully!' : 'User created successfully!', 'success');
         hideCreateUserModal();
-        renderView('users'); // Refresh user list
+        renderView('users', state.usersPage); // Refresh user list on current page
         e.target.reset(); // Clear form
     } else {
         showToast(res?.error || 'Operation failed', 'error');
     }
 }
 
-async function deleteUser(id) {
+
+async function deleteUser(id, page) {
     if (!confirm('Delete this user?')) return;
-    await apiCall(`/users.php/${id}`, 'DELETE');
-    renderView('users');
+    const res = await apiCall(`/users.php/${id}`, 'DELETE');
+    if (!res.error) {
+        showToast('User deleted', 'success');
+        renderView('users', page);
+    } else {
+        showToast(res.error, 'error');
+    }
 }
+
+window.filterAdminUsers = function() {
+    const search = document.getElementById('adminUserSearch').value;
+    const dept = document.getElementById('adminUserDept').value;
+    renderView('users', 1, search, dept);
+};
+
 
 async function downloadPdf(id) {
     console.log(`[DEBUG] downloadPdf called for ID: ${id}`);
@@ -1504,7 +1593,7 @@ async function downloadPermissionPdf(id) {
     showNotification('Generating Permission PDF...', 'info');
     try {
         const response = await fetch(`${API_URL}/generate_permission_pdf.php?id=${id}`, {
-            headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+            headers: { 'Authorization': `Bearer ${safeStorage.getItem('token')}` }
         });
         if (response.ok) {
             const blob = await response.blob();
@@ -1529,7 +1618,7 @@ async function downloadOutpassPdf(id) {
     showNotification('Generating Outpass PDF...', 'info');
     try {
         const response = await fetch(`${API_URL}/generate_outpass_pdf.php?id=${id}`, {
-            headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+            headers: { 'Authorization': `Bearer ${safeStorage.getItem('token')}` }
         });
         if (response.ok) {
             const blob = await response.blob();

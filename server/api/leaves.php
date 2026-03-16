@@ -1,377 +1,123 @@
 <?php
 header('Content-Type: application/json');
-require_once '../../includes/config.php';
+require_once __DIR__ . '/../core/auth_guard.php';
 
-require_once '../../includes/auth_guard.php';
-require_once '../../includes/helpers.php';
-require_once '../../includes/audit.php';
+use App\Repositories\LeaveRepository;
+use App\Repositories\RuleRepository;
+use App\Repositories\NotificationRepository;
+use App\Core\Database;
 
 $method = $_SERVER['REQUEST_METHOD'];
 $path = isset($_SERVER['PATH_INFO']) ? $_SERVER['PATH_INFO'] : '/';
 
-$user = $global_user;
+$leaveRepo = new LeaveRepository();
+$ruleRepo = new RuleRepository();
+$notifRepo = new NotificationRepository();
+$db = Database::getInstance();
 
-// Router
-if ($method === 'POST' && $path === '/apply') {
-    apply_leave($conn, $user);
-} elseif ($method === 'GET' && $path === '/my-leaves') {
-    get_my_leaves($conn, $user);
-} elseif ($method === 'GET' && $path === '/substitutions/pending') {
-    get_pending_substitutions($conn, $user);
-} elseif ($method === 'PUT' && preg_match('/^\/substitutions\/(\d+)\/respond$/', $path, $matches)) {
-    action_substitution($conn, $user, $matches[1]);
-} elseif ($method === 'GET' && $path === '/pending/hod') {
-    get_pending_hod($conn, $user);
-} elseif ($method === 'GET' && $path === '/pending/principal') {
-    get_pending_principal($conn, $user);
-} elseif ($method === 'PUT' && preg_match('/^\/(\d+)\/approve\/hod$/', $path, $matches)) {
-    approve_hod($conn, $user, $matches[1]);
-} elseif ($method === 'PUT' && preg_match('/^\/(\d+)\/approve\/principal$/', $path, $matches)) {
-    approve_principal($conn, $user, $matches[1]);
-} else {
-    http_response_code(404);
-}
-
-function apply_leave($conn, $user) {
-    // Role validation: Only teaching roles can apply
-    if (!isTeachingRole($user['role']) && $user['role'] !== 'admin') {
-        http_response_code(403);
-        echo json_encode(["error" => "Only faculty/teaching staff can apply for leave."]);
-        return;
-    }
-
-    $data = json_decode(file_get_contents("php://input"));
-    
-    // Basic Validation
-    if (!isset($data->leave_type) || !isset($data->start_date) || !isset($data->end_date)) {
-        http_response_code(400);
-        echo json_encode(["error" => "Missing required fields"]);
-        return;
-    }
-
-    if ($data->start_date > $data->end_date) {
-        http_response_code(400);
-        echo json_encode(["error" => "End Date cannot be before Start Date"]);
-        return;
-    }
-
-    // Force Duration Type to 'Days'
-    $duration_type = 'Days';
-    $selected_hours = null; // No longer used
-
-    // Calculate Total Days
-    $start = new DateTime($data->start_date);
-    $end = new DateTime($data->end_date);
-    $interval = $start->diff($end);
-    $total_days = $interval->days + 1;
-
-    $substitutions = isset($data->substitutions) ? $data->substitutions : [];
-
-    // Validation: Substitution Rules
-    if ($total_days <= 5) {
-        // Optional substitutions: No strict count check required.
+try {
+    // Router logic similarly to before but using repositories
+    if ($method === 'POST' && $path === '/apply') {
+        $data = json_decode(file_get_contents("php://input"), true);
+        handleApplyLeave($data, $global_user, $leaveRepo, $ruleRepo, $notifRepo, $db);
+        
+    } elseif ($method === 'GET' && $path === '/my-leaves') {
+        echo json_encode($leaveRepo->getUserLeaves($global_user['id']));
+        
+    } elseif ($method === 'GET' && $path === '/substitutions/pending') {
+        echo json_encode($leaveRepo->getPendingSubstitutions($global_user['id']));
+        
+    } elseif ($method === 'PUT' && preg_match('/^\/substitutions\/(\d+)\/respond$/', $path, $matches)) {
+        $data = json_decode(file_get_contents("php://input"), true);
+        $leaveRepo->updateSubstitutionStatus($matches[1], $global_user['id'], $data['status']);
+        echo json_encode(["message" => "Substitution updated"]);
+        
+    } elseif ($method === 'GET' && $path === '/pending/hod') {
+        echo json_encode($leaveRepo->getPendingHod($global_user['department']));
+        
+    } elseif ($method === 'GET' && $path === '/pending/principal') {
+        echo json_encode($leaveRepo->getPendingPrincipal());
+        
+    } elseif ($method === 'PUT' && preg_match('/^\/(\d+)\/approve\/hod$/', $path, $matches)) {
+        $data = json_decode(file_get_contents("php://input"), true);
+        handleHodApprove($matches[1], $data, $global_user, $leaveRepo, $notifRepo);
+        
+    } elseif ($method === 'PUT' && preg_match('/^\/(\d+)\/approve\/principal$/', $path, $matches)) {
+        $data = json_decode(file_get_contents("php://input"), true);
+        handlePrincipalApprove($matches[1], $data, $global_user, $leaveRepo, $notifRepo);
+        
     } else {
-        // > 5 Days: substitutions are not required/stored
-        $substitutions = [];
-    }
-
-    // Determine target user and override flag
-    $target_user_id = $user['id'];
-    $is_override = false;
-    
-    if (strtolower($user['role']) === 'admin') {
-        if (isset($data->user_id)) {
-            $target_user_id = $data->user_id;
-        }
-        if (isset($data->is_override) && $data->is_override) {
-            $is_override = true;
-        }
-    }
-
-    $default_limits = [
-        'Casual Leave' => 12,
-        'OD' => 1,
-        'ED' => 1
-    ];
-
-    if (!$is_override && array_key_exists($data->leave_type, $default_limits)) {
-        // Fetch dynamic limit from database
-        $stmtRule = $conn->prepare("SELECT rule_value FROM leave_rules WHERE rule_name = ?");
-        $stmtRule->execute([$data->leave_type . ' Limit']);
-        $rule = $stmtRule->fetch();
-        $limit = $rule ? (float)$rule['rule_value'] : $default_limits[$data->leave_type];
-
-        $month = date('m', strtotime($data->start_date));
-        $year = date('Y', strtotime($data->start_date));
-        
-        $stmtLimit = $conn->prepare("SELECT SUM(DATEDIFF(end_date, start_date) + 1) as used_days FROM leave_requests WHERE user_id = ? AND leave_type = ? AND MONTH(start_date) = ? AND YEAR(start_date) = ? AND hod_status != 'Rejected' AND principal_status != 'Rejected'");
-        $stmtLimit->execute([$target_user_id, $data->leave_type, $month, $year]);
-        $usage = $stmtLimit->fetch();
-        $used_days = $usage['used_days'] ? (float)$usage['used_days'] : 0;
-        
-        if (($used_days + $total_days) > $limit) {
-            http_response_code(400);
-            echo json_encode(["error" => "Policy Limit Exceeded: Max {$limit} days per month for {$data->leave_type}. Used: $used_days, Requested: $total_days."]);
-            return;
-        }
-
-        // DUPLICATE PROTECTION: Check if same request exists in last 1 minute
-        $stmtDup = $conn->prepare("SELECT COUNT(*) FROM leave_requests WHERE user_id = ? AND start_date = ? AND end_date = ? AND leave_type = ? AND created_at > (NOW() - INTERVAL 1 MINUTE)");
-        $stmtDup->execute([$target_user_id, $data->start_date, $data->end_date, $data->leave_type]);
-        if ($stmtDup->fetchColumn() > 0) {
-            http_response_code(409);
-            echo json_encode(["error" => "Duplicate submission detected. Please wait a moment."]);
-            return;
-        }
-    }
-
-    try {
-        $conn->beginTransaction();
-
-        $stmt = $conn->prepare("INSERT INTO leave_requests (user_id, leave_type, start_date, end_date, reason, duration_type, selected_hours, hod_status, principal_status, is_override) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
-        $stmt->execute([
-            $target_user_id,
-            $data->leave_type,
-            $data->start_date,
-            $data->end_date,
-            $data->reason,
-            $duration_type,
-            $selected_hours,
-            (strtolower($user['role']) === 'hod' ? 'Approved' : 'Pending'), // Auto-approve HoD level if applicant is HoD
-            'Pending', // Principal Status
-            $is_override ? 1 : 0
-        ]);
-        $leave_id = $conn->lastInsertId();
-
-        // Handle Substitutions
-        // Frontend sends: [{ substitute_id: 123, hour: 1-16 }]
-        // Map 1-8 -> Day 1, 9-16 -> Day 2
-        foreach ($substitutions as $sub) {
-            if (!isset($sub->substitute_id)) continue;
-            
-            $hour_idx = isset($sub->hour) ? $sub->hour : 1;
-            $sub_id = $sub->substitute_id;
-
-            if ($sub_id == $target_user_id) {
-                // Ignore self-substitutions silently instead of throwing exception
-                continue;
-            }
-            
-            // Determine Date and Period
-            // Day 1: 1-8
-            // Day 2: 9-16
-            // We can calculate offset: floor((hour-1)/8)
-            
-            $day_offset = floor(($hour_idx - 1) / 8);
-            $period = (($hour_idx - 1) % 8) + 1;
-
-            $date_obj = clone $start;
-            if ($day_offset > 0) {
-                $date_obj->modify("+$day_offset day");
-            }
-            $sub_date = $date_obj->format('Y-m-d');
-            
-            $stmt = $conn->prepare("INSERT INTO leave_substitutions (leave_request_id, date, hour_slot, substitute_user_id, status) VALUES (?, ?, ?, ?, 'PENDING')");
-            $stmt->execute([$leave_id, $sub_date, $period, $sub_id]);
-
-            // Notify Substitute
-            create_notification($conn, $sub_id, "You have a substitution request from " . $user['name'] . " for Period $period on $sub_date", 'SUBSTITUTION_REQUEST');
-        }
-
-        $conn->commit();
-        logAudit($conn, $target_user_id, 'LEAVE_APPLIED', ['leave_id'=>$leave_id, 'days'=>$total_days, 'is_override'=>$is_override]);
-        echo json_encode(["message" => "Leave applied successfully"]);
-    } catch(Exception $e) {
-        $conn->rollBack();
-        http_response_code(500);
-        echo json_encode(["error" => "Database Error: " . $e->getMessage()]);
-    }
-}
-
-function get_my_leaves($conn, $user) {
-    // Also fetch substitution status summary?
-    $stmt = $conn->prepare("SELECT * FROM leave_requests WHERE user_id = ? ORDER BY created_at DESC");
-    $stmt->execute([$user['id']]);
-    echo json_encode($stmt->fetchAll(PDO::FETCH_ASSOC));
-}
-
-function get_pending_substitutions($conn, $user) {
-    // Requests where I am the substitute and status is PENDING
-    $sql = "SELECT ls.*, l.leave_type, l.start_date, l.end_date, l.reason, u.name as requester_name 
-            FROM leave_substitutions ls
-            JOIN leave_requests l ON ls.leave_request_id = l.id
-            JOIN users u ON l.user_id = u.id
-            WHERE ls.substitute_user_id = ? AND ls.status = 'PENDING'";
-    $stmt = $conn->prepare($sql);
-    $stmt->execute([$user['id']]);
-    echo json_encode($stmt->fetchAll(PDO::FETCH_ASSOC));
-}
-
-function action_substitution($conn, $user, $id) {
-    $data = json_decode(file_get_contents("php://input"));
-    if (!$data || !isset($data->status) || !in_array($data->status, ['ACCEPTED', 'REJECTED'])) {
-        http_response_code(400);
-        echo json_encode(["error" => "Invalid status"]);
-        return;
-    }
-    // Check ownership
-    $stmt = $conn->prepare("SELECT * FROM leave_substitutions WHERE id = ? AND substitute_user_id = ?");
-    $stmt->execute([$id, $user['id']]);
-    $sub = $stmt->fetch();
-
-    if (!$sub) {
         http_response_code(404);
-        echo json_encode(["error" => "Substitution request not found"]);
-        return;
+        echo json_encode(["error" => "Route or method not found."]);
+    }
+} catch (\Exception $e) {
+    http_response_code(500);
+    echo json_encode(["error" => $e->getMessage()]);
+}
+
+function handleHodApprove($id, $data, $user, $leaveRepo, $notifRepo) {
+    if (strtolower($user['role']) !== 'hod') throw new Exception("Unauthorized");
+    
+    // Check subs
+    $summary = $leaveRepo->getSubstitutionSummary($id);
+    if ($summary['total'] > 0 && $summary['total'] != $summary['accepted']) {
+        throw new Exception("Cannot approve. Pending substitutions exist.");
     }
 
-    $stmt = $conn->prepare("UPDATE leave_substitutions SET status = ? WHERE id = ?");
-    $stmt->execute([$data->status, $id]);
-
-    // Notify original requester
-    // Fetch leave and user info
-    $stmt = $conn->prepare("SELECT user_id FROM leave_requests WHERE id = ?");
-    $stmt->execute([$sub['leave_request_id']]);
-    $leave = $stmt->fetch();
-    create_notification($conn, $leave['user_id'], "Your substitution request was " . $data->status . " by " . $user['name'], 'SUBSTITUTION_RESPONSE');
+    $leaveRepo->updateStatus($id, 'hod_status', $data['status']);
     
-    logAudit($conn, $user['id'], 'SUBSTITUTION_ACTION', ['sub_id'=>$id, 'status'=>$data->status]);
+    // Notify
+    $leave = $leaveRepo->findById($id);
+    $notifRepo->create($leave['user_id'], "Leave " . $data['status'] . " by HoD", 'LEAVE_UPDATE');
+    echo json_encode(["message" => "HoD approval updated"]);
+}
 
-    echo json_encode(["message" => "Substitution Query Updated"]);
+function handlePrincipalApprove($id, $data, $user, $leaveRepo, $notifRepo) {
+    if (strtolower($user['role']) !== 'principal') throw new Exception("Unauthorized");
+    
+    $leaveRepo->updateStatus($id, 'principal_status', $data['status']);
+    
+    $leave = $leaveRepo->findById($id);
+    $notifRepo->create($leave['user_id'], "Leave " . $data['status'] . " by Principal", 'LEAVE_UPDATE');
+    echo json_encode(["message" => "Principal approval updated"]);
 }
 
 
-// HoD: Get requests from their department
-function get_pending_hod($conn, $user) {
-    if (strtolower($user['role']) !== 'hod') return http_response_code(403);
-    
-    // Logic: Show requests where `hod_status` is Pending AND
-    // (There are NO substitutions OR All substitutions are ACCEPTED)
-    // This is a bit complex in SQL.
-    
-    $sql = "SELECT l.*, u.name, u.department,
-            (SELECT COUNT(*) FROM leave_substitutions ls WHERE ls.leave_request_id = l.id) as total_subs,
-            (SELECT COUNT(*) FROM leave_substitutions ls WHERE ls.leave_request_id = l.id AND ls.status = 'ACCEPTED') as accepted_subs
-            FROM leave_requests l 
-            JOIN users u ON l.user_id = u.id 
-            WHERE l.hod_status = 'Pending' AND u.department = ?";
-            
-    // Filter in PHP or complex Having clause. Let's filter in PHP for clarity.
-    $stmt = $conn->prepare($sql);
-    $stmt->execute([$user['department']]);
-    $all_leaves = $stmt->fetchAll(PDO::FETCH_ASSOC);
+function handleApplyLeave($data, $user, $leaveRepo, $ruleRepo, $notifRepo, $db) {
+    // Basic Validation
+    if (empty($data['start_date']) || empty($data['end_date'])) {
+        throw new Exception("Missing dates");
+    }
 
-    $ready_leaves = [];
-    foreach($all_leaves as $leave) {
-        if ($leave['total_subs'] == 0 || $leave['total_subs'] == $leave['accepted_subs']) {
-             // Fetch sub details for display
-             $stmtSub = $conn->prepare("SELECT ls.*, u.name as sub_name FROM leave_substitutions ls JOIN users u ON ls.substitute_user_id = u.id WHERE ls.leave_request_id = ?");
-             $stmtSub->execute([$leave['id']]);
-             $leave['substitutions'] = $stmtSub->fetchAll(PDO::FETCH_ASSOC);
-             $ready_leaves[] = $leave;
+    $start = new DateTime($data['start_date']);
+    $end = new DateTime($data['end_date']);
+    $total_days = $start->diff($end)->days + 1;
+
+    // Check Limits
+    $limitRule = $ruleRepo->findByName($data['leave_type'] . ' Limit');
+    $limit = $limitRule ? (float)$limitRule['rule_value'] : 12;
+    $used = $leaveRepo->getUsedDays($user['id'], $data['leave_type'], $start->format('m'), $start->format('Y'));
+
+    if (($used + $total_days) > $limit && !($data['is_override'] ?? false)) {
+        throw new Exception("Policy limit exceeded: Max $limit days.");
+    }
+
+    // Transactional logic
+    $db->beginTransaction();
+    try {
+        $data['user_id'] = $user['id'];
+        $leaveId = $leaveRepo->create($data);
+
+        if (!empty($data['substitutions'])) {
+            foreach ($data['substitutions'] as $sub) {
+                $leaveRepo->addSubstitution($leaveId, $data['start_date'], $sub['hour'], $sub['substitute_id']);
+                $notifRepo->create($sub['substitute_id'], "New substitution request from " . $user['name'], 'SUBSTITUTION');
+            }
         }
+        $db->commit();
+        echo json_encode(["message" => "Leave applied successfully", "id" => $leaveId]);
+    } catch (Exception $e) {
+        $db->rollBack();
+        throw $e;
     }
-    
-    echo json_encode($ready_leaves);
 }
-
-// Principal: Get HoD-approved requests
-function get_pending_principal($conn, $user) {
-    if (strtolower($user['role']) !== 'principal') return http_response_code(403);
-
-    $sql = "SELECT l.*, u.name, u.department FROM leave_requests l 
-            JOIN users u ON l.user_id = u.id 
-            WHERE l.hod_status = 'Approved' AND l.principal_status = 'Pending'";
-    $stmt = $conn->prepare($sql);
-    $stmt->execute();
-    echo json_encode($stmt->fetchAll(PDO::FETCH_ASSOC));
-}
-
-function approve_hod($conn, $user, $id) {
-    if (strtolower($user['role']) !== 'hod') return http_response_code(403);
-    $data = json_decode(file_get_contents("php://input")); // { "status": "Approved" }
-    
-    // STRICT CHECK: Ensure all substitutions are accepted
-    $sqlCheck = "SELECT 
-        (SELECT COUNT(*) FROM leave_substitutions WHERE leave_request_id = ?) as total,
-        (SELECT COUNT(*) FROM leave_substitutions WHERE leave_request_id = ? AND status = 'ACCEPTED') as accepted";
-    $stmtCheck = $conn->prepare($sqlCheck);
-    $stmtCheck->execute([$id, $id]);
-    $check = $stmtCheck->fetch();
-
-    if ($check['total'] > 0 && $check['total'] != $check['accepted']) {
-        http_response_code(400);
-        echo json_encode(["error" => "Cannot approve. Pending substitutions exist."]);
-        return;
-    }
-
-    // SECURITY ENHANCEMENT: Verify department mismatch
-    $stmtDept = $conn->prepare("SELECT u.department FROM leave_requests l JOIN users u ON l.user_id = u.id WHERE l.id = ?");
-    $stmtDept->execute([$id]);
-    $dept = $stmtDept->fetchColumn();
-    if ($dept !== $user['department']) {
-        http_response_code(403);
-        echo json_encode(["error" => "Unauthorized: Department mismatch."]);
-        return;
-    }
-
-    $stmt = $conn->prepare("UPDATE leave_requests SET hod_status = ? WHERE id = ?");
-    $stmt->execute([$data->status, $id]);
-    
-    // Insert Approval Record
-    $action = ($data->status == 'Approved') ? 'APPROVED' : 'REJECTED';
-    $stmt = $conn->prepare("INSERT INTO approvals (leave_request_id, approver_id, role_at_time, action) VALUES (?, ?, ?, ?)");
-    $stmt->execute([$id, $user['id'], 'hod', $action]);
-
-    // Notify User
-    $stmt = $conn->prepare("SELECT user_id FROM leave_requests WHERE id = ?");
-    $stmt->execute([$id]);
-    $leave = $stmt->fetch();
-    create_notification($conn, $leave['user_id'], "Your leave request was " . $data->status . " by HoD", 'LEAVE_STATUS_UPDATE');
-    
-    logAudit($conn, $user['id'], 'HOD_ACTION', ['leave_id'=>$id, 'status'=>$data->status]);
-
-    echo json_encode(["message" => "HoD Status Updated"]);
-}
-
-function approve_principal($conn, $user, $id) {
-    if (strtolower($user['role']) !== 'principal') return http_response_code(403);
-    $data = json_decode(file_get_contents("php://input")); 
-    
-    // STRICT CHECK: HoD must have approved (unless the applicant is the HoD)
-    // We check the current db state
-    $stmtCheck = $conn->prepare("SELECT hod_status, user_id FROM leave_requests WHERE id = ?");
-    $stmtCheck->execute([$id]);
-    $current = $stmtCheck->fetch();
-
-    // Get applicant role to see if they are HoD
-    $stmtRole = $conn->prepare("SELECT role FROM users WHERE id = ?");
-    $stmtRole->execute([$current['user_id']]);
-    $applicant = $stmtRole->fetch();
-
-    if ($current['hod_status'] !== 'Approved' && strtolower($applicant['role']) !== 'hod') {
-         http_response_code(400);
-         echo json_encode(["error" => "Cannot approve. HoD approval missing."]);
-         return;
-    }
-
-    $stmt = $conn->prepare("UPDATE leave_requests SET principal_status = ? WHERE id = ?");
-    $stmt->execute([$data->status, $id]);
-
-     // Insert Approval Record
-     $action = ($data->status == 'Approved') ? 'APPROVED' : 'REJECTED';
-     $stmt = $conn->prepare("INSERT INTO approvals (leave_request_id, approver_id, role_at_time, action) VALUES (?, ?, ?, ?)");
-     $stmt->execute([$id, $user['id'], 'principal', $action]);
-
-    // Notify User
-     $stmt = $conn->prepare("SELECT user_id FROM leave_requests WHERE id = ?");
-     $stmt->execute([$id]);
-     $leave = $stmt->fetch();
-     create_notification($conn, $leave['user_id'], "Your leave request was " . $data->status . " by Principal. Final Decision.", 'LEAVE_STATUS_UPDATE');
-     
-     logAudit($conn, $user['id'], 'PRINCIPAL_ACTION', ['leave_id'=>$id, 'status'=>$data->status]);
-
-    // Auto-download disabled. Return simple success message.
-    echo json_encode(["message" => "Principal Status Updated"]);
-}
-

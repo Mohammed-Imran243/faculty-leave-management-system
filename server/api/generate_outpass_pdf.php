@@ -7,8 +7,8 @@ ini_set('display_errors', '0');
 ob_start();
 
 require_once __DIR__ . '/../vendor/autoload.php';
-require_once __DIR__ . '/../../includes/config.php';
-require_once __DIR__ . '/../../includes/auth_guard.php';
+require_once __DIR__ . '/../core/bootstrap.php';
+require_once __DIR__ . '/../core/auth_guard.php';
 
 ob_clean();
 
@@ -46,9 +46,9 @@ try {
     // Faculty Signature
     $facultySigImg = 'Signature of Faculty';
     if (!empty($outpass['signature_path'])) {
-        $sigPath = __DIR__ . '/../../assets/signatures/' . $outpass['signature_path'];
-        if (file_exists($sigPath)) {
-            $facultySigImg = '<img src="../../assets/signatures/' . htmlspecialchars($outpass['signature_path']) . '" height="60">';
+        $sigPath = __DIR__ . '/../' . $outpass['signature_path'];
+        if ($outpass['signature_path'] && file_exists($sigPath)) {
+            $facultySigImg = '<img src="../' . htmlspecialchars($outpass['signature_path']) . '" height="60">';
         }
     }
 
