@@ -21,7 +21,7 @@ try {
 
     // Fetch Permission & User Details
     $stmt = $conn->prepare(
-        "SELECT p.*, u.name, u.role, u.department, u.signature_path FROM faculty_permissions p
+        "SELECT p.*, u.name, u.role, u.department FROM faculty_permissions p
          JOIN users u ON p.user_id = u.id WHERE p.id = ?"
     );
     $stmt->execute([$permId]);
@@ -57,12 +57,6 @@ try {
 
     // Faculty Signature
     $facultySigImg = '(Signature of Staff)';
-    if (!empty($perm['signature_path'])) {
-        $sigPath = __DIR__ . '/../' . $perm['signature_path'];
-        if ($perm['signature_path'] && file_exists($sigPath)) {
-            $facultySigImg = '<img src="../' . htmlspecialchars($perm['signature_path'] ?? '') . '" height="60">';
-        }
-    }
     // --- Official Approval Stamps ---
     // HOD Stamp
     $hodSigImg = '';

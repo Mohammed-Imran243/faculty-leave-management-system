@@ -91,7 +91,23 @@ function handleApplyLeave($data, $user, $leaveRepo, $ruleRepo, $notifRepo, $db) 
 
     $start = new DateTime($data['start_date']);
     $end = new DateTime($data['end_date']);
-    $total_days = $start->diff($end)->days + 1;
+    
+    // Sunday Validation
+    if ($start->format('N') == 7 || $end->format('N') == 7) {
+        throw new Exception("Leave cannot start or end on a Sunday.");
+    }
+
+    // Calculate total days excluding Sundays
+    $total_days = 0;
+    $curr = clone $start;
+    while ($curr <= $end) {
+        if ($curr->format('N') != 7) {
+            $total_days++;
+        }
+        $curr->modify('+1 day');
+    }
+
+    if ($total_days == 0) throw new Exception("Invalid date range (only Sundays selected).");
 
     // Check Limits
     $limitRule = $ruleRepo->findByName($data['leave_type'] . ' Limit');
@@ -99,7 +115,7 @@ function handleApplyLeave($data, $user, $leaveRepo, $ruleRepo, $notifRepo, $db) 
     $used = $leaveRepo->getUsedDays($user['id'], $data['leave_type'], $start->format('m'), $start->format('Y'));
 
     if (($used + $total_days) > $limit && !($data['is_override'] ?? false)) {
-        throw new Exception("Policy limit exceeded: Max $limit days.");
+        throw new Exception("Policy limit exceeded: Max $limit days for " . $data['leave_type'] . ".");
     }
 
     // Transactional logic
@@ -110,11 +126,24 @@ function handleApplyLeave($data, $user, $leaveRepo, $ruleRepo, $notifRepo, $db) 
 
         if (!empty($data['substitutions'])) {
             foreach ($data['substitutions'] as $sub) {
-                $leaveRepo->addSubstitution($leaveId, $data['start_date'], $sub['hour'], $sub['substitute_id']);
+                $subDate = $sub['date'] ?? $data['start_date'];
+                
+                // Conflict Check
+                if ($leaveRepo->checkSubstituteConflict($sub['substitute_id'], $subDate, $sub['hour'])) {
+                    throw new Exception("Selected substitute is already booked for Hour " . $sub['hour'] . " on " . $subDate);
+                }
+
+                $leaveRepo->addSubstitution($leaveId, $subDate, $sub['hour'], $sub['substitute_id']);
                 $notifRepo->create($sub['substitute_id'], "New substitution request from " . $user['name'], 'SUBSTITUTION');
             }
         }
         $db->commit();
+
+        // Purge Analytics Cache
+        $cacheDir = __DIR__ . '/../cache';
+        $pattern = $cacheDir . '/analytics_' . $user['id'] . '_*.json';
+        array_map('unlink', glob($pattern));
+
         echo json_encode(["message" => "Leave applied successfully", "id" => $leaveId]);
     } catch (Exception $e) {
         $db->rollBack();

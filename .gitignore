@@ -4,4 +4,8 @@ node_modules/
 dist/
 build/
 server/config.local.php
+server/cache/
+server/logs/
 tmp/
+deployment_check.php
+tmp_cleanup_rules.php

@@ -141,7 +141,7 @@ if (isTeachingRole($user['role'])) {
         ORDER BY date DESC LIMIT 5
     ");
     $stmt->execute([$user['id'], $user['id'], $user['id']]);
-    $response['recent_activity'] = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    $response['recent_leaves'] = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
     // 10. Monthly Trends (Last 6 Months)
     $stmtTrend = $conn->prepare("
@@ -151,7 +151,40 @@ if (isTeachingRole($user['role'])) {
         GROUP BY month ORDER BY month ASC
     ");
     $stmtTrend->execute([$user['id']]);
+    $stmtTrend->execute([$user['id']]);
     $response['monthly_trends'] = $stmtTrend->fetchAll(PDO::FETCH_ASSOC);
+
+    // 11. Full Calendar Data (Faculty)
+    $stmt = $conn->prepare("
+        SELECT 'Leave' as type, leave_type as details, start_date as start, end_date as end, 
+               CASE WHEN principal_status = 'Approved' THEN 'approved' 
+                    WHEN hod_status = 'Rejected' OR principal_status = 'Rejected' THEN 'rejected' 
+                    ELSE 'pending' END as status
+        FROM leave_requests WHERE user_id = ?
+        UNION ALL
+        SELECT 'Permission', 'Permission', permission_date, permission_date, status FROM faculty_permissions WHERE user_id = ?
+        UNION ALL
+        SELECT 'Outpass', 'Outpass', outpass_date, outpass_date, status FROM faculty_outpasses WHERE user_id = ?
+    ");
+    $stmt->execute([$user['id'], $user['id'], $user['id']]);
+    $response['full_leave_calendar'] = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    // 12. Leave Balance Summary
+    $response['leave_balance'] = [
+        'casual_leave' => [
+            'total' => $cl_limit,
+            'used' => $cl_used,
+            'remaining' => max(0, $cl_limit - $cl_used)
+        ],
+        'permissions' => [
+            'limit' => get_rule_limit($conn, 'Permission Limit', 1),
+            'used' => $response['permissions_used']
+        ],
+        'outpasses' => [
+            'limit' => get_rule_limit($conn, 'Outpass Limit', 1),
+            'used' => $response['outpasses_used']
+        ]
+    ];
 
 } elseif (strtolower($user['role']) === 'hod') {
     $dept = $user['department'];
@@ -238,6 +271,26 @@ if (isTeachingRole($user['role'])) {
     ");
     $stmt->execute([$dept, $month, $year]);
     $response['substitution_status'] = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    // 11. Department Coverage (HOD View)
+    $stmt = $conn->prepare("
+        SELECT u.name, l.start_date, l.end_date, l.leave_type, l.hod_status 
+        FROM leave_requests l 
+        JOIN users u ON l.user_id = u.id 
+        WHERE u.department = ? AND l.hod_status != 'Rejected'
+    ");
+    $stmt->execute([$dept]);
+    $response['department_coverage'] = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    // 12. Leave Balance Summary (Dept)
+    $stmt = $conn->prepare("SELECT COUNT(*) FROM users WHERE department = ?");
+    $stmt->execute([$dept]);
+    $total_users = (int)$stmt->fetchColumn();
+    $response['dept_balance_summary'] = [
+        'total_faculty' => $total_users,
+        'on_leave_today' => $response['leaves_today'],
+        'pending_actions' => $response['pending_approvals']
+    ];
 
 } elseif (in_array(strtolower($user['role']), ['principal', 'admin'])) {
     // Check for drill-down request
@@ -369,6 +422,16 @@ if (isTeachingRole($user['role'])) {
     ");
     $stmtTrend->execute();
     $response['monthly_trends'] = $stmtTrend->fetchAll(PDO::FETCH_ASSOC);
+
+    // 8. Global Coverage (Principal/Admin)
+    $stmt = $conn->prepare("
+        SELECT u.name, u.department, l.start_date, l.end_date, l.leave_type 
+        FROM leave_requests l 
+        JOIN users u ON l.user_id = u.id 
+        WHERE l.principal_status = 'Approved'
+    ");
+    $stmt->execute();
+    $response['global_coverage'] = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
     $response['total_leaves'] = $response['leaves_today'];
 }

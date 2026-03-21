@@ -377,53 +377,70 @@ async function renderView(viewId) {
         let html = ``;
 
         if (isTeachingRole(role)) {
+            const balance = stats.leave_balance || {};
             html += `
-            <div class="stats-grid">
+            <div class="stats-grid animate-fade-in">
                 <div class="stat-card blue">
                     <div class="stat-icon"><i class="fas fa-calendar-check"></i></div>
                     <div class="stat-info">
-                        <span>Remaining Casual Leaves</span>
-                        <h3>${stats.remaining_casual_leave}</h3>
+                        <span>Casual Leave Balance</span>
+                        <h3 id="cl-balance">${balance.casual_leave?.remaining || 0}</h3>
+                        <small>of ${balance.casual_leave?.total || 1.5} days</small>
+                    </div>
+                </div>
+                <div class="stat-card purple">
+                    <div class="stat-icon"><i class="fas fa-clock"></i></div>
+                    <div class="stat-info">
+                        <span>Permissions Used</span>
+                        <h3>${balance.permissions?.used || 0}</h3>
+                        <small>Limit: ${balance.permissions?.limit || 2}/mo</small>
                     </div>
                 </div>
                 <div class="stat-card orange">
-                    <div class="stat-icon"><i class="fas fa-clock"></i></div>
-                    <div class="stat-info">
-                        <span>Casual Leaves (This Month)</span>
-                        <h3>${stats.casual_leave_used || 0}</h3>
-                    </div>
-                </div>
-                <div class="stat-card red">
-                    <div class="stat-icon"><i class="fas fa-file-invoice"></i></div>
-                    <div class="stat-info">
-                        <span>Total Leaves Recorded</span>
-                        <h3>${stats.total_leaves}</h3>
-                    </div>
-                </div>
-                <div class="stat-card green">
                     <div class="stat-icon"><i class="fas fa-door-open"></i></div>
                     <div class="stat-info">
                         <span>Outpasses Used</span>
-                        <h3>${stats.outpasses_used}</h3>
+                        <h3>${balance.outpasses?.used || 0}</h3>
+                        <small>Limit: ${balance.outpasses?.limit || 2}/mo</small>
+                    </div>
+                </div>
+                <div class="stat-card red">
+                    <div class="stat-icon"><i class="fas fa-history"></i></div>
+                    <div class="stat-info">
+                        <span>Total Requests</span>
+                        <h3>${stats.total_leaves}</h3>
+                        <small>Approved/Pending</small>
                     </div>
                 </div>
             </div>
 
             <div class="dashboard-sections">
-                <div class="left-section">
-                    <div class="section-card">
+                <div class="left-section" style="display: flex; flex-direction: column; gap: 25px;">
+                    <div class="chart-card">
                         <div class="section-header">
-                            <h3>My Leave Breakdown (This Month)</h3>
+                            <h3>Monthly Leave Trends</h3>
                         </div>
-                        <div class="breakdown-list">
-                            <div class="breakdown-item">
-                                <div class="item-info"><span>Casual Leave</span> <span>${stats.casual_leave_used || 0}/1.5</span></div>
-                                <div class="progress-bar"><div class="fill blue" style="width: ${(stats.casual_leave_used/1.5)*100}%"></div></div>
-                            </div>
-                            <div class="breakdown-item">
-                                <div class="item-info"><span>Permissions</span> <span>${stats.permissions_used || 0}/2</span></div>
-                                <div class="progress-bar"><div class="fill purple" style="width: ${(stats.permissions_used/2)*100}%"></div></div>
-                            </div>
+                        <div class="chart-container">
+                            <canvas id="monthlyTrendsChart"></canvas>
+                        </div>
+                    </div>
+
+                    <div class="calendar-card">
+                        <div class="section-header">
+                            <h3>My Leave Calendar</h3>
+                            <button class="btn btn-primary btn-sm" onclick="renderView('apply')">+ New Request</button>
+                        </div>
+                        <div id="calendar"></div>
+                    </div>
+                </div>
+
+                <div class="right-section" style="display: flex; flex-direction: column; gap: 25px;">
+                    <div class="chart-card" style="min-height: 400px;">
+                        <div class="section-header">
+                            <h3>Leave Type Distribution</h3>
+                        </div>
+                        <div class="chart-container">
+                            <canvas id="leaveDistributionChart"></canvas>
                         </div>
                     </div>
 
@@ -438,15 +455,15 @@ async function renderView(viewId) {
                                     <tr><th>Type</th><th>Date</th><th>Status</th></tr>
                                 </thead>
                                 <tbody>`;
-            
+
             if (stats.recent_leaves && stats.recent_leaves.length > 0) {
                 stats.recent_leaves.slice(0, 5).forEach(l => {
                     const statusClass = l.status.toLowerCase();
                     html += `
                         <tr>
-                            <td><strong>${escapeHtml(l.leave_type)}</strong></td>
-                            <td>${l.start_date}</td>
-                            <td><span class="status-badge status-${statusClass}">${l.status}</span></td>
+                            <td data-label="Type"><strong>${escapeHtml(l.leave_type)}</strong></td>
+                            <td data-label="Date">${l.start_date}</td>
+                            <td data-label="Status"><span class="status-badge status-${statusClass}">${l.status}</span></td>
                         </tr>`;
                 });
             } else {
@@ -456,23 +473,6 @@ async function renderView(viewId) {
             html += `
                                 </tbody>
                             </table>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="right-section">
-                    <div class="section-card">
-                        <div class="section-header"><h3>Quick Actions</h3></div>
-                        <div class="quick-actions-grid">
-                            <button class="btn-action" onclick="renderView('apply')">
-                                <i class="fas fa-plus"></i> Apply Leave
-                            </button>
-                            <button class="btn-action" onclick="renderView('apply-permission')">
-                                <i class="fas fa-clock"></i> Permission
-                            </button>
-                            <button class="btn-action" onclick="renderView('apply-outpass')">
-                                <i class="fas fa-door-open"></i> Outpass
-                            </button>
                         </div>
                     </div>
 
@@ -497,6 +497,7 @@ async function renderView(viewId) {
                     </div>
                 </div>
             </div>`;
+
         } else if (role === 'hod') {
             const currentDept = state.user.department || '';
             html += `
@@ -539,64 +540,69 @@ async function renderView(viewId) {
                 </div>
             </div>
 
-            <div class="grid-2col">
-                <div class="card">
-                    <div class="card-header">
-                        <h3 class="card-title">Pending Dept Requests</h3>
-                        <a href="#" onclick="renderView('approvals'); return false;" class="btn btn-secondary btn-sm">View All</a>
+            <div class="dashboard-sections animate-fade-in">
+                <div class="left-section" style="display: flex; flex-direction: column; gap: 25px;">
+                    <div class="chart-card">
+                        <div class="section-header">
+                            <h3>Monthly Dept Trends</h3>
+                        </div>
+                        <div class="chart-container">
+                            <canvas id="monthlyTrendsChart"></canvas>
+                        </div>
                     </div>
-                    <div class="table-responsive">
-                        <table>
-                            <thead>
-                                <tr>
-                                    <th>Faculty</th>
-                                    <th>Type</th>
-                                    <th>Date</th>
-                                    <th>Status</th>
-                                </tr>
-                            </thead>
-                            <tbody>`;
+
+                    <div class="calendar-card">
+                        <div class="section-header">
+                            <h3>Department Coverage</h3>
+                        </div>
+                        <div id="calendar"></div>
+                    </div>
+                </div>
+
+                <div class="right-section" style="display: flex; flex-direction: column; gap: 25px;">
+                    <div class="chart-card" style="min-height: 400px;">
+                        <div class="section-header">
+                            <h3>Leave Distribution (${currentDept})</h3>
+                        </div>
+                        <div class="chart-container">
+                            <canvas id="leaveDistributionChart"></canvas>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-header">
+                            <h3 class="card-title">Pending Dept Requests</h3>
+                            <a href="#" onclick="renderView('approvals'); return false;" class="btn btn-secondary btn-sm">View All</a>
+                        </div>
+                        <div class="table-responsive">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Faculty</th>
+                                        <th>Type</th>
+                                        <th>Date</th>
+                                        <th>Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody>`;
             
             if (stats.pending_requests && stats.pending_requests.length > 0) {
                 stats.pending_requests.forEach(r => {
                     html += `
                         <tr>
-                            <td><strong>${escapeHtml(r.faculty_name)}</strong></td>
-                            <td>${escapeHtml(r.leave_type)}</td>
-                            <td>${r.leave_date}</td>
-                            <td><span class="badge badge-pending">${escapeHtml(r.status)}</span></td>
+                            <td data-label="Faculty"><strong>${escapeHtml(r.faculty_name)}</strong></td>
+                            <td data-label="Type">${escapeHtml(r.leave_type)}</td>
+                            <td data-label="Date">${r.leave_date}</td>
+                            <td data-label="Status"><span class="badge badge-pending">${escapeHtml(r.status)}</span></td>
                         </tr>`;
                 });
             } else {
                 html += `<tr><td colspan="4" style="text-align:center; padding:24px; color:var(--text-muted);">No pending requests.</td></tr>`;
             }
             html += `
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-
-                <div class="card">
-                    <div class="card-header">
-                        <h3 class="card-title">Leave Type Distribution</h3>
-                    </div>
-                    <div style="padding: 16px;">
-                        <ul style="list-style:none; padding:0; display:flex; flex-direction:column; gap:12px;">`;
-            
-            if (stats.department_distribution && stats.department_distribution.length > 0) {
-                stats.department_distribution.forEach(d => {
-                    html += `
-                        <li style="display:flex; justify-content:space-between; align-items:center;">
-                            <span>${escapeHtml(d.leave_type)}</span>
-                            <span class="badge badge-secondary">${d.count}</span>
-                        </li>`;
-                });
-            } else {
-                html += `<li style="text-align:center; color:var(--text-muted);">No distribution data.</li>`;
-            }
-            
-            html += `
-                        </ul>
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -636,7 +642,7 @@ async function renderView(viewId) {
             if (stats.substitution_status && stats.substitution_status.length > 0) {
                 stats.substitution_status.slice(0, 5).forEach(s => {
                     const statusClass = s.status.toLowerCase();
-                    html += `<tr><td>${escapeHtml(s.faculty_name)}</td><td><span class="badge badge-${statusClass}">${s.status}</span></td></tr>`;
+                    html += `<tr><td data-label="Faculty">${escapeHtml(s.faculty_name)}</td><td data-label="Status"><span class="badge badge-${statusClass}">${s.status}</span></td></tr>`;
                 });
             } else {
                 html += `<tr><td style="color:var(--text-muted);">No substitution items.</td></tr>`;
@@ -685,50 +691,53 @@ async function renderView(viewId) {
                 </div>
             </div>
 
-            <div class="grid-2col">
-                <div class="card">
-                    <div class="card-header">
-                        <h3 class="card-title">Dept Leave Distribution</h3>
+            <div class="dashboard-sections animate-fade-in">
+                <div class="left-section" style="display: flex; flex-direction: column; gap: 25px;">
+                    <div class="chart-card">
+                        <div class="section-header">
+                            <h3>Monthly Leave Trends (Global)</h3>
+                        </div>
+                        <div class="chart-container">
+                            <canvas id="monthlyTrendsChart"></canvas>
+                        </div>
                     </div>
-                    <div style="padding: 16px;">
-                        <div style="display: flex; flex-direction: column; gap: 16px;">`;
-            if (stats.dept_stats && stats.dept_stats.length > 0) {
-                const maxDept = Math.max(...stats.dept_stats.map(d => parseInt(d.count)));
-                stats.dept_stats.forEach(d => {
-                    const widthPct = Math.max(5, (d.count / maxDept) * 100);
-                    html += `
-                        <div onclick="loadDepartmentDrilldown('${escapeHtml(d.department)}')" style="cursor:pointer;">
-                            <div style="display:flex; justify-content:space-between; margin-bottom:4px; font-size:0.9rem;">
-                                <strong>${escapeHtml(d.department)}</strong>
-                                <span>${d.count}</span>
-                            </div>
-                            <div style="height:8px; background:#f1f5f9; border-radius:4px; overflow:hidden;">
-                                <div style="height:100%; width:${widthPct}%; background:var(--primary); transition:width 0.4s ease;"></div>
-                            </div>
-                        </div>`;
-                });
-            }
-            html += `    </div>
+
+                    <div class="calendar-card">
+                        <div class="section-header">
+                            <h3>Global Faculty Coverage</h3>
+                        </div>
+                        <div id="calendar"></div>
                     </div>
                 </div>
 
-                <div class="card">
-                    <div class="card-header"><h3 class="card-title">Pending Approvals Breakdown</h3></div>
-                    <div style="padding: 16px;">
-                        <ul style="list-style:none; padding:0; display:flex; flex-direction:column; gap:16px;">
-                            <li style="display:flex; justify-content:space-between; align-items:center;">
-                                <span>Substitution Pending</span>
-                                <span class="badge badge-pending">${stats.pending_breakdown?.substitution || 0}</span>
-                            </li>
-                            <li style="display:flex; justify-content:space-between; align-items:center;">
-                                <span>HoD Approval Pending</span>
-                                <span class="badge badge-pending">${stats.pending_breakdown?.hod || 0}</span>
-                            </li>
-                            <li style="display:flex; justify-content:space-between; align-items:center;">
-                                <span>Principal Approval Pending</span>
-                                <span class="badge badge-pending">${stats.pending_breakdown?.principal || 0}</span>
-                            </li>
-                        </ul>
+                <div class="right-section" style="display: flex; flex-direction: column; gap: 25px;">
+                    <div class="chart-card" style="min-height: 400px;">
+                        <div class="section-header">
+                            <h3>Departmental Distribution</h3>
+                        </div>
+                        <div class="chart-container">
+                            <canvas id="leaveDistributionChart"></canvas>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-header"><h3 class="card-title">Pending Approvals Breakdown</h3></div>
+                        <div style="padding: 16px;">
+                            <ul style="list-style:none; padding:0; display:flex; flex-direction:column; gap:16px;">
+                                <li style="display:flex; justify-content:space-between; align-items:center;">
+                                    <span>Substitution Pending</span>
+                                    <span class="badge badge-pending">${stats.pending_breakdown?.substitution || 0}</span>
+                                </li>
+                                <li style="display:flex; justify-content:space-between; align-items:center;">
+                                    <span>HoD Approval Pending</span>
+                                    <span class="badge badge-pending">${stats.pending_breakdown?.hod || 0}</span>
+                                </li>
+                                <li style="display:flex; justify-content:space-between; align-items:center;">
+                                    <span>Principal Approval Pending</span>
+                                    <span class="badge badge-pending">${stats.pending_breakdown?.principal || 0}</span>
+                                </li>
+                            </ul>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -744,10 +753,10 @@ async function renderView(viewId) {
             if (stats.individual_records && stats.individual_records.length > 0) {
                 stats.individual_records.slice(0, 10).forEach(u => {
                     html += `<tr>
-                        <td><strong>${escapeHtml(u.name)}</strong></td>
-                        <td>${escapeHtml(u.department)}</td>
-                        <td>${u.total_requests}</td>
-                        <td><span class="badge badge-secondary">Active</span></td>
+                        <td data-label="Name"><strong>${escapeHtml(u.name)}</strong></td>
+                        <td data-label="Dept">${escapeHtml(u.department)}</td>
+                        <td data-label="Total">${u.total_requests}</td>
+                        <td data-label="Status"><span class="badge badge-secondary">Active</span></td>
                     </tr>`;
                 });
             }
@@ -755,6 +764,13 @@ async function renderView(viewId) {
         }
 
         container.innerHTML = html;
+        
+        if (viewId === 'analytics') {
+            setTimeout(() => {
+                initCharts(stats, role);
+                initCalendar(stats, role);
+            }, 100);
+        }
         return;
     }
 
@@ -808,11 +824,11 @@ async function renderView(viewId) {
         users.forEach(u => {
             html += `
                 <tr>
-                    <td><strong>${escapeHtml(u.name)}</strong></td>
-                    <td>${escapeHtml(u.employee_code || '-')}</td>
-                    <td>${escapeHtml(u.designation || '-')}</td>
-                    <td><span class="badge badge-secondary">${escapeHtml(u.role)}</span></td>
-                    <td>
+                    <td data-label="Faculty Name"><strong>${escapeHtml(u.name)}</strong></td>
+                    <td data-label="Emp Code">${escapeHtml(u.employee_code || '-')}</td>
+                    <td data-label="Designation">${escapeHtml(u.designation || '-')}</td>
+                    <td data-label="Role"><span class="badge badge-secondary">${escapeHtml(u.role)}</span></td>
+                    <td data-label="Action">
                         <div style="display:flex; gap:5px;">
                             <button class="btn btn-sm btn-primary" onclick="editUser(${u.id}, ${page})" title="Edit"><i class="fas fa-edit"></i></button>
                             <button class="btn btn-sm btn-secondary" onclick="deleteUser(${u.id}, ${page})" title="Delete"><i class="fas fa-trash"></i></button>
@@ -889,15 +905,15 @@ async function renderView(viewId) {
 
             html += `
                 <tr>
-                    <td>
+                    <td data-label="Rule">
                         <strong>${escapeHtml(r.rule_name)}</strong><br>
                         <small class="text-muted">${escapeHtml(r.description || '')}</small>
                     </td>
-                    <td>${escapeHtml(r.rule_period)}</td>
-                    <td>
+                    <td data-label="Period">${escapeHtml(r.rule_period)}</td>
+                    <td data-label="Value">
                         ${inputHtml}
                     </td>
-                    <td>
+                    <td data-label="Action">
                         <button class="btn btn-sm btn-primary" onclick="updateRule(${r.id})">Save</button>
                     </td>
                 </tr>`;
@@ -1205,16 +1221,16 @@ async function renderView(viewId) {
             leaves.forEach(l => {
                 html += `
                     <tr>
-                        <td>
+                        <td data-label="Faculty">
                             <strong>${escapeHtml(l.faculty_name)}</strong><br>
                             <small class="text-muted">${escapeHtml(l.department)}</small>
                         </td>
-                        <td>
+                        <td data-label="Leave Details">
                             <strong style="color:var(--primary);">${escapeHtml(l.leave_type)}</strong><br>
                             <small>${l.start_date} to ${l.end_date}</small>
                         </td>
-                        <td><small>${escapeHtml(l.substitutions_v2 || 'None')}</small></td>
-                        <td>
+                        <td data-label="Substitutes"><small>${escapeHtml(l.substitutions_v2 || 'None')}</small></td>
+                        <td data-label="Action">
                             <div style="display:flex; gap:8px;">
                                 <button class="btn btn-sm btn-primary" onclick="approveLeave(${l.id})">Approve</button>
                                 <button class="btn btn-sm btn-secondary" onclick="rejectLeave(${l.id})">Reject</button>
@@ -1230,13 +1246,9 @@ async function renderView(viewId) {
         return;
     }
 
-    // -- My Profile --
     if (viewId === 'profile') {
         showLoader();
-        const [me, sig] = await Promise.all([
-            apiCall('/users.php/me'),
-            apiCall('/upload_signature.php')
-        ]);
+        const me = await apiCall('/users.php/me');
 
         if (!me) {
             container.innerHTML = `<div class="error-state">Failed to load profile data.</div>`;
@@ -1293,85 +1305,12 @@ async function renderView(viewId) {
                         </div>
                     </div>
 
-                    <div class="profile-card animate-fade-in" style="animation-delay: 0.2s;">
-                        <div class="card-header">
-                            <i class="fas fa-pen-fancy"></i>
-                            <h3>Digital Signature</h3>
-                        </div>
-                        <div class="card-body">
-                            <div class="sig-current-preview">
-                                ${sig && sig.signature ? 
-                                    `<img src="${BASE_URL}/${sig.signature}" alt="Current Signature">` : 
-                                    `<p class="text-muted">No signature uploaded</p>`
-                                }
-                            </div>
-                            
-                            <form onsubmit="handleSignatureUpload(event)">
-                                <div class="sig-upload-box" onclick="this.querySelector('input').click()">
-                                    <i class="fas fa-cloud-upload-alt"></i>
-                                    <p>Click to upload or drag & drop</p>
-                                    <small class="text-muted">PNG or JPG (Max 2MB)</small>
-                                    <input type="file" name="signature" style="display:none" accept="image/*" onchange="this.form.requestSubmit()">
-                                </div>
-                            </form>
-                        </div>
-                    </div>
-
-                    <div class="profile-card full-width animate-fade-in" style="animation-delay: 0.3s;">
-                        <div class="card-header">
-                            <i class="fas fa-lock"></i>
-                            <h3>Account Security</h3>
-                        </div>
-                        <div class="card-body">
-                            <form onsubmit="handleUpdatePassword(event)" class="password-form">
-                                <div class="form-group">
-                                    <label>Current Password</label>
-                                    <input type="password" name="current_password" class="form-control" required placeholder="••••••••">
-                                </div>
-                                <div class="form-group">
-                                    <label>New Password</label>
-                                    <input type="password" name="new_password" class="form-control" required placeholder="••••••••">
-                                </div>
-                                <div class="form-group full-width" style="margin-top: 10px;">
-                                    <button type="submit" class="btn btn-primary" style="padding: 12px 30px;">Update Password</button>
-                                </div>
-                            </form>
-                        </div>
-                    </div>
                 </div>
             </div>`;
         return;
     }
 }
 
-async function handleSignatureUpload(e) {
-    e.preventDefault();
-    const formData = new FormData(e.target);
-
-    // Manual fetch because apiCall handles JSON body by default
-    try {
-        const token = safeStorage.getItem('token');
-        const res = await fetch(API_URL + '/upload_signature.php', {
-            method: 'POST',
-            credentials: 'same-origin',
-            headers: {
-                'Authorization': `Bearer ${token}`,
-                'X-CSRF-Token': safeStorage.getItem('csrf') || ''
-            },
-            body: formData
-        });
-        const data = await res.json();
-
-        if (res.ok) {
-            showToast('Signature Uploaded!', 'success');
-            renderView('signature'); // Refresh
-        } else {
-            showToast(data.error || 'Upload Failed', 'error');
-        }
-    } catch (err) {
-        showToast('Upload Error: ' + err.message, 'error');
-    }
-}
 
 // --- Handlers ---
 async function handleApplyLeave(e) {
@@ -1388,6 +1327,13 @@ async function handleApplyLeave(e) {
     // Calculate days for UI validation mapping
     const start = new Date(data.start_date);
     const end = new Date(data.end_date);
+    
+    // Sunday Validation
+    if (start.getDay() === 0 || end.getDay() === 0) {
+        showToast("Leave cannot start or end on a Sunday.", "warning");
+        return;
+    }
+
     const timeDiff = end.getTime() - start.getTime();
     const totalDays = Math.ceil(timeDiff / (1000 * 3600 * 24)) + 1;
 
@@ -1395,16 +1341,21 @@ async function handleApplyLeave(e) {
     data.substitutions = [];
     let hasSelectedSubstitute = false;
     
-    // Check if hourly substitution was used (up to 5 days * 8 hours = 40 hours)
-    for (let i = 1; i <= 40; i++) {
-        let sid = data[`substitute_hour_${i}`];
-        if (sid) {
-            data.substitutions.push({ substitute_id: sid, hour: i });
-            hasSelectedSubstitute = true;
+    // Check all keys for substitution data
+    Object.keys(data).forEach(key => {
+        if (key.startsWith('substitute_hour_')) {
+            const sid = data[key];
+            if (sid) {
+                // Extract hour and date from key: substitute_hour_${h}_date_${isoDate}
+                const parts = key.split('_');
+                const hour = parts[2];
+                const date = parts[4];
+                data.substitutions.push({ substitute_id: sid, hour: hour, date: date });
+                hasSelectedSubstitute = true;
+            }
+            delete data[key];
         }
-        // Remove from base object to clean payload mapping
-        delete data[`substitute_hour_${i}`];
-    }
+    });
 
     const startD = new Date(data.start_date);
     const endD = new Date(data.end_date);
@@ -1658,10 +1609,10 @@ function calculateDaysAndShowSubstitutes() {
                             <h5 style="margin-top:0; margin-bottom:10px; border-bottom: 1px solid rgba(0,0,0,0.1); padding-bottom: 5px; color: var(--text-color);">Day ${d + 1} (${dateStr})</h5>
                             <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px;">`;
                 for (let h = 1; h <= 8; h++) {
-                    let globalHour = (d * 8) + h;
+                    const isoDate = dayDate.toISOString().split('T')[0];
                     html += `   <div>
                                     <label style="font-size: 0.85em;">Hour ${h}</label>
-                                    <select class="form-control" name="substitute_hour_${globalHour}" style="padding: 5px; font-size: 0.9em;">
+                                    <select class="form-control" name="substitute_hour_${h}_date_${isoDate}" style="padding: 5px; font-size: 0.9em;">
                                         <option value="">-- Select --</option>
                                         ${window.cachedSubOptions || ''}
                                     </select>
@@ -1834,7 +1785,7 @@ window.loadDepartmentDrilldown = async function(dept) {
     const data = await apiCall(`/analytics.php?department=${encodeURIComponent(dept)}`);
     if (!data || !data.department_drilldown) {
         container.querySelector('div.glass-card').innerHTML = `
-            <button onclick="document.getElementById('drilldown-modal-container').style.display='none'" style="position: absolute; top: 15px; right: 20px; background: none; border: none; font-size: 1.5rem; cursor: pointer; color: var(--text-muted);">&times;</button>
+            <button onclick="document.getElementById('drilldown-modal-container').style.display='none'" style="position: absolute; top: 15px; right: 20px; background: none; border: none; font-size: 1.5rem; cursor: pointer; color: #e74c3c;">&times;</button>
             <h2 style="margin-top: 0; color: #e74c3c;">Error</h2>
             <p>Failed to load data for this department.</p>
         `;
@@ -1876,6 +1827,159 @@ window.loadDepartmentDrilldown = async function(dept) {
     `;
 };
 
+/**
+ * Chart.js Initialization
+ */
+function initCharts(data, role) {
+    const ctxTrend = document.getElementById('monthlyTrendsChart');
+    const ctxDist = document.getElementById('leaveDistributionChart');
+
+    if (ctxTrend) {
+        const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        const monthlyData = new Array(12).fill(0);
+        
+        if (data.monthly_trends) {
+            data.monthly_trends.forEach(t => {
+                const mIdx = parseInt(t.month) - 1;
+                if (mIdx >= 0 && mIdx < 12) monthlyData[mIdx] = t.count;
+            });
+        }
+
+        new Chart(ctxTrend, {
+            type: 'bar',
+            data: {
+                labels: months,
+                datasets: [{
+                    label: 'Leaves Taken',
+                    data: monthlyData,
+                    backgroundColor: 'rgba(14, 165, 233, 0.6)',
+                    borderColor: '#0ea5e9',
+                    borderWidth: 1,
+                    borderRadius: 6
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { 
+                    legend: { display: false },
+                    tooltip: {
+                        padding: 12,
+                        backgroundColor: 'rgba(30, 41, 59, 0.9)',
+                        titleFont: { size: 14, weight: 'bold' },
+                        bodyFont: { size: 13 }
+                    }
+                },
+                scales: { 
+                    y: { 
+                        beginAtZero: true, 
+                        ticks: { stepSize: 1, font: { size: window.innerWidth < 768 ? 10 : 12 } } 
+                    },
+                    x: {
+                        ticks: { font: { size: window.innerWidth < 768 ? 9 : 12 } }
+                    }
+                }
+            }
+        });
+    }
+
+    if (ctxDist) {
+        let labelData = [];
+        let valueData = [];
+        const colors = ['#0ea5e9', '#6366f1', '#10b981', '#f59e0b', '#ef4444'];
+
+        const distSource = isTeachingRole(role) 
+            ? data.distribution 
+            : (role === 'hod' ? data.department_distribution : data.dept_stats);
+
+        if (distSource) {
+            distSource.forEach(d => {
+                labelData.push(d.leave_type || d.department || 'Other');
+                valueData.push(d.count);
+            });
+        }
+
+        new Chart(ctxDist, {
+            type: 'doughnut',
+            data: {
+                labels: labelData,
+                datasets: [{
+                    data: valueData,
+                    backgroundColor: colors,
+                    borderWidth: 0
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { 
+                        position: window.innerWidth < 768 ? 'bottom' : 'right', 
+                        labels: { 
+                            usePointStyle: true, 
+                            padding: 15,
+                            font: { size: window.innerWidth < 768 ? 11 : 13 }
+                        } 
+                    }
+                },
+                cutout: '70%'
+            }
+        });
+    }
+}
+
+/**
+ * FullCalendar Initialization
+ */
+function initCalendar(data, role) {
+    const calendarEl = document.getElementById('calendar');
+    if (!calendarEl) return;
+
+    let events = [];
+    
+    if (role === 'hod' && data.department_coverage) {
+        events = data.department_coverage.map(l => ({
+            title: `${l.name} (${l.leave_type})`,
+            start: l.start_date,
+            end: l.end_date ? new Date(new Date(l.end_date).getTime() + 86400000).toISOString().split('T')[0] : l.start_date,
+            className: `event-${l.hod_status?.toLowerCase() || 'approved'}`
+        }));
+    } else if (data.full_leave_calendar) {
+        events = data.full_leave_calendar.map(l => ({
+            title: `${l.type}: ${l.details}`,
+            start: l.start,
+            end: l.end ? new Date(new Date(l.end).getTime() + 86400000).toISOString().split('T')[0] : l.start,
+            className: `event-${l.status}`
+        }));
+    } else if (data.global_coverage) {
+        events = data.global_coverage.map(l => ({
+            title: `${l.name} - ${l.department}`,
+            start: l.start_date,
+            end: l.end_date ? new Date(new Date(l.end_date).getTime() + 86400000).toISOString().split('T')[0] : l.start_date,
+            className: 'event-approved'
+        }));
+    }
+
+    const isMobile = window.innerWidth < 768;
+    const calendar = new FullCalendar.Calendar(calendarEl, {
+        initialView: isMobile ? 'listMonth' : 'dayGridMonth',
+        headerToolbar: {
+            left: isMobile ? 'prev,next' : 'prev,next today',
+            center: 'title',
+            right: isMobile ? 'listMonth' : 'dayGridMonth,timeGridWeek'
+        },
+        events: events,
+        height: 'auto',
+        eventClick: function(info) {
+            showToast(info.event.title, 'info');
+        },
+        dayMaxEvents: true,
+        handleWindowResize: true
+    });
+
+    calendar.render();
+}
+
 export {
     login,
     logout,
@@ -1890,7 +1994,6 @@ export {
     handleUpdatePassword,
     deleteUser,
     downloadPdf,
-    handleSignatureUpload,
     calculateDaysAndShowSubstitutes
 };
 
@@ -1915,7 +2018,6 @@ async function handleUpdatePassword(e) {
 
 // Init
 if (window.location.pathname.includes('dashboard.html')) {
-    window.handleSignatureUpload = handleSignatureUpload; // Ensure global access
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initDashboard);
     else initDashboard();
 }

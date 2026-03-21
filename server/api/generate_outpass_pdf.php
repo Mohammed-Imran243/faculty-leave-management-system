@@ -21,7 +21,7 @@ try {
 
     // Fetch Outpass Details
     $stmt = $conn->prepare(
-        "SELECT o.*, u.name, u.role, u.department, u.signature_path FROM faculty_outpasses o
+        "SELECT o.*, u.name, u.role, u.department FROM faculty_outpasses o
          JOIN users u ON o.user_id = u.id WHERE o.id = ?"
     );
     $stmt->execute([$outpassId]);
@@ -45,12 +45,6 @@ try {
 
     // Faculty Signature
     $facultySigImg = 'Signature of Faculty';
-    if (!empty($outpass['signature_path'])) {
-        $sigPath = __DIR__ . '/../' . $outpass['signature_path'];
-        if ($outpass['signature_path'] && file_exists($sigPath)) {
-            $facultySigImg = '<img src="../' . htmlspecialchars($outpass['signature_path'] ?? '') . '" height="60">';
-        }
-    }
 
     // --- Official Approval Stamps ---
     // HOD Stamp

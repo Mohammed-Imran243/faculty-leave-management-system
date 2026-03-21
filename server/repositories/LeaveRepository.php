@@ -68,6 +68,19 @@ class LeaveRepository {
         ]);
     }
 
+    public function checkSubstituteConflict($subId, $date, $slot) {
+        $sql = "SELECT COUNT(*) FROM leave_substitutions 
+                WHERE substitute_user_id = :sid 
+                AND date = :date 
+                AND hour_slot = :slot 
+                AND status = 'ACCEPTED'";
+        return $this->db->query($sql, [
+            ':sid' => $subId,
+            ':date' => $date,
+            ':slot' => $slot
+        ])->fetchColumn() > 0;
+    }
+
     public function getPendingSubstitutions($userId) {
         $sql = "SELECT ls.*, l.leave_type, l.start_date, l.end_date, l.reason, u.name as requester_name 
                 FROM leave_substitutions ls

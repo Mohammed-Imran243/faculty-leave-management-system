@@ -23,7 +23,7 @@ try {
     // Fetch Leave & User Details
     try {
         $stmt = $conn->prepare(
-            "SELECT l.*, u.name, u.role, u.department, u.signature_path FROM leave_requests l
+            "SELECT l.*, u.name, u.role, u.department FROM leave_requests l
              JOIN users u ON l.user_id = u.id WHERE l.id = ?"
         );
         $stmt->execute([$leaveId]);
@@ -106,7 +106,7 @@ try {
     function getSignerInfo(PDO $conn, ?array $approval): ?array {
         if (!$approval) return null;
         try {
-            $stmt = $conn->prepare("SELECT name, signature_path FROM users WHERE id = ?");
+            $stmt = $conn->prepare("SELECT name FROM users WHERE id = ?");
             $stmt->execute([$approval['approver_id']]);
             return $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
         } catch (Throwable $e) { throw new Exception("Error fetching Signer Info: " . $e->getMessage()); }
@@ -182,12 +182,6 @@ try {
 
     // Faculty Signature
     $facultySigImg = '(Signature of Staff)';
-    if (!empty($leave['signature_path'])) {
-        $sigPath = __DIR__ . '/../' . $leave['signature_path'];
-        if ($leave['signature_path'] && file_exists($sigPath)) {
-            $facultySigImg = '<img src="../' . htmlspecialchars($leave['signature_path'] ?? '') . '" height="60">';
-        }
-    }
     
     // Check if OD / ED
     $upperType = strtoupper($leave['leave_type']);

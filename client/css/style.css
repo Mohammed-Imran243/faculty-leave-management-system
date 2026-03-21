@@ -1305,39 +1305,109 @@ td {
     margin: 0;
 }
 
-.sig-upload-box {
-    background: #f8fafc;
-    border: 2px dashed #cbd5e1;
+
+/* --- Analytics & Interactive Components --- */
+.chart-card {
+    background: white;
     border-radius: 16px;
-    padding: 30px;
-    text-align: center;
-    cursor: pointer;
-    transition: all 0.2s;
-}
-
-.sig-upload-box:hover {
-    border-color: var(--primary);
-    background: var(--primary-light);
-}
-
-.sig-upload-box i {
-    font-size: 2.5rem;
-    color: #94a3b8;
-    margin-bottom: 15px;
-}
-
-.sig-current-preview {
-    height: 100px;
+    box-shadow: var(--card-shadow);
+    padding: 24px;
     display: flex;
-    align-items: center;
-    justify-content: center;
-    margin-bottom: 20px;
+    flex-direction: column;
+    height: 100%;
+    min-height: 350px;
+    transition: var(--transition);
 }
 
-.sig-current-preview img {
-    max-width: 100%;
-    max-height: 100%;
-    object-fit: contain;
+.chart-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+}
+
+.chart-container {
+    position: relative;
+    flex: 1;
+    width: 100%;
+}
+
+.calendar-card {
+    background: white;
+    border-radius: 16px;
+    box-shadow: var(--card-shadow);
+    padding: 25px;
+    margin-top: 25px;
+}
+
+#calendar {
+    min-height: 600px;
+}
+
+/* FullCalendar Customization */
+.fc .fc-toolbar-title {
+    font-size: 1.2rem;
+    font-weight: 700;
+    color: #1e293b;
+}
+
+.fc .fc-button-primary {
+    background-color: var(--primary);
+    border-color: var(--primary);
+}
+
+.fc .fc-button-primary:hover {
+    background-color: var(--primary-dark);
+    border-color: var(--primary-dark);
+}
+
+.fc .fc-daygrid-event {
+    border-radius: 4px;
+    padding: 2px 4px;
+    font-size: 0.85rem;
+    border: none;
+}
+
+.event-pending { background-color: #fef3c7 !important; color: #92400e !important; border-left: 3px solid #f59e0b !important; }
+.event-approved { background-color: #dcfce7 !important; color: #166534 !important; border-left: 3px solid #10b981 !important; }
+.event-rejected { background-color: #fee2e2 !important; color: #991b1b !important; border-left: 3px solid #ef4444 !important; }
+
+/* Dashboard Balance Cards */
+.balance-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 15px;
+    margin-bottom: 25px;
+}
+
+.balance-card {
+    background: linear-gradient(135deg, var(--primary-light), #ffffff);
+    padding: 15px;
+    border-radius: 12px;
+    border: 1px solid rgba(14, 165, 233, 0.2);
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.balance-label {
+    font-size: 0.8rem;
+    color: #64748b;
+    font-weight: 600;
+}
+
+.balance-value {
+    font-size: 1.25rem;
+    font-weight: 800;
+    color: var(--primary-dark);
+}
+
+/* Transitions */
+.animate-fade-in {
+    animation: fadeIn 0.4s ease-out forwards;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
 }
 
 .password-form {
@@ -1347,33 +1417,136 @@ td {
 }
 
 @media (max-width: 900px) {
-    .profile-grid {
-        grid-template-columns: 1fr;
-    }
     .password-form {
         grid-template-columns: 1fr;
     }
 }
 
-@media (max-width: 600px) {
+/* --- Responsive Media Queries --- */
+
+@media (max-width: 1024px) {
+    :root {
+        --sidebar-width: 0px; /* Hide by default on smaller screens */
+    }
+    
+    .sidebar {
+        transform: translateX(-100%);
+        width: 260px !important; /* Force width when active */
+    }
+    
+    .sidebar.active {
+        transform: translateX(0);
+        box-shadow: 20px 0 50px rgba(0,0,0,0.2);
+    }
+    
+    .main-wrapper {
+        margin-left: 0 !important;
+    }
+    
+    .container {
+        padding: 0 15px;
+    }
+}
+
+@media (max-width: 768px) {
+    .top-header {
+        padding: 0 15px;
+    }
+    
+    .inst-header h1 {
+        font-size: 1.1rem;
+    }
+    
+    .inst-header p {
+        font-size: 0.7rem;
+    }
+    
+    .balance-grid {
+        grid-template-columns: 1fr 1fr;
+    }
+    
+    .chart-card {
+        min-height: 300px;
+        padding: 15px;
+    }
+    
+    .profile-grid {
+        grid-template-columns: 1fr;
+    }
+    
     .profile-header-card {
         flex-direction: column;
         text-align: center;
         padding: 30px 20px;
     }
-    .profile-avatar-large {
-        margin: 0 auto;
+    
+    .user-info .user-text {
+        display: none; /* Hide name/role text on very small headers */
+    }
+
+    /* Stacked Tables for Mobile */
+    .table-responsive table, 
+    .table-responsive thead, 
+    .table-responsive tbody, 
+    .table-responsive th, 
+    .table-responsive td, 
+    .table-responsive tr {
+        display: block;
+    }
+
+    .table-responsive thead tr {
+        position: absolute;
+        top: -9999px;
+        left: -9999px;
+    }
+
+    .table-responsive tr {
+        border-bottom: 2px solid #f1f5f9;
+        margin-bottom: 10px;
+        background: white;
+        border-radius: 8px;
+        padding: 10px 0;
+    }
+
+    .table-responsive td {
+        border: none;
+        position: relative;
+        padding-left: 50% !important;
+        text-align: right !important;
+        min-height: 35px;
+    }
+
+    .table-responsive td:before {
+        content: attr(data-label);
+        position: absolute;
+        left: 15px;
+        width: 45%;
+        padding-right: 10px;
+        white-space: nowrap;
+        text-align: left;
+        font-weight: 700;
+        color: #64748b;
+        font-size: 0.8rem;
     }
 }
 
 @media (max-width: 480px) {
-    .toast-container {
-        top: 10px;
-        right: 10px;
-        left: 10px;
+    .balance-grid {
+        grid-template-columns: 1fr;
     }
-    .toast {
-        min-width: 0;
-        width: 100%;
+    
+    .inst-header {
+        padding: 15px 10px;
+    }
+    
+    .btn {
+        padding: 10px 16px;
+        font-size: 0.9rem;
+    }
+    
+    .modal-card {
+        padding: 20px;
+        margin: 10px;
+        width: calc(100% - 20px);
     }
 }
