@@ -65,7 +65,7 @@ function showToast(message, type = 'info') {
 
     const toast = document.createElement('div');
     toast.className = `toast toast-${type}`;
-    
+
     const icons = {
         success: 'fa-check-circle',
         error: 'fa-times-circle',
@@ -215,7 +215,7 @@ function setupMobileSidebar() {
 }
 
 // Global toggle for inline onclick usage
-window.toggleSidebar = function() {
+window.toggleSidebar = function () {
     const sidebar = document.getElementById('sidebar');
     const overlay = document.getElementById('sidebar-overlay');
     if (sidebar) sidebar.classList.toggle('active');
@@ -322,7 +322,7 @@ function renderSidebar() {
         };
         menu.appendChild(a);
     });
-    
+
     state.sidebarRendered = true;
 }
 
@@ -371,7 +371,7 @@ async function renderView(viewId) {
             stats = await apiCall('/analytics.php');
             if (stats) state.cache['analytics'] = stats; // Cache the response
         }
-        
+
         if (!stats) return;
 
         let html = ``;
@@ -469,7 +469,7 @@ async function renderView(viewId) {
             } else {
                 html += `<tr><td colspan="3" style="text-align:center; padding:20px;">No pending requests found.</td></tr>`;
             }
-            
+
             html += `
                                 </tbody>
                             </table>
@@ -479,7 +479,7 @@ async function renderView(viewId) {
                     <div class="section-card">
                         <div class="section-header"><h3>Substitution Status</h3></div>
                         <div class="sub-list">`;
-            
+
             if (stats.substitution_requests && stats.substitution_requests.length > 0) {
                 stats.substitution_requests.forEach(s => {
                     html += `
@@ -491,7 +491,7 @@ async function renderView(viewId) {
             } else {
                 html += `<p style="text-align:center; color:var(--text-muted);">No pending substitutions.</p>`;
             }
-            
+
             html += `
                         </div>
                     </div>
@@ -585,7 +585,7 @@ async function renderView(viewId) {
                                     </tr>
                                 </thead>
                                 <tbody>`;
-            
+
             if (stats.pending_requests && stats.pending_requests.length > 0) {
                 stats.pending_requests.forEach(r => {
                     html += `
@@ -764,7 +764,7 @@ async function renderView(viewId) {
         }
 
         container.innerHTML = html;
-        
+
         if (viewId === 'analytics') {
             setTimeout(() => {
                 initCharts(stats, role);
@@ -779,7 +779,7 @@ async function renderView(viewId) {
         const page = arguments[1] || 1;
         const search = arguments[2] || '';
         const dept = arguments[3] || '';
-        
+
         showLoader();
         const response = await apiCall(`/users.php?page=${page}&limit=20&search=${encodeURIComponent(search)}&dept=${encodeURIComponent(dept)}`);
         if (!response || !response.users) return;
@@ -797,8 +797,14 @@ async function renderView(viewId) {
                             <option value="">All Departments</option>
                             <option value="CSE" ${dept === 'CSE' ? 'selected' : ''}>CSE</option>
                             <option value="ECE" ${dept === 'ECE' ? 'selected' : ''}>ECE</option>
+                            <option value="MECH" ${dept === 'ME' ? 'selected' : ''}>MECH</option>
+                            <option value="CIVIL" ${dept === 'CIVIL' ? 'selected' : ''}>CIVIL</option>
+                            <option value="AI&DS" ${dept === 'AI&DS' ? 'selected' : ''}>AI&DS</option>
+                            <option value="EEE" ${dept === 'EEE' ? 'selected' : ''}>EEE</option>
+                            <option value="MCA" ${dept === 'MCA' ? 'selected' : ''}>MCA</option>
+                            <option value="IT" ${dept === 'IT' ? 'selected' : ''}>IT</option>
+                            <option value="MBA" ${dept === 'MBA' ? 'selected' : ''}>MBA</option>
                             <option value="ME" ${dept === 'ME' ? 'selected' : ''}>ME</option>
-                            <option value="CIVIL" ${dept === 'CIVIL' ? 'selected' : ''}>Civil</option>
                         </select>
                         <button class="btn btn-secondary btn-sm" onclick="filterAdminUsers()">Search</button>
                     </div>
@@ -816,7 +822,7 @@ async function renderView(viewId) {
                             </tr>
                         </thead>
                         <tbody>`;
-        
+
         if (users.length === 0) {
             html += `<tr><td colspan="5" style="text-align:center; padding: 20px;">No users found.</td></tr>`;
         }
@@ -860,7 +866,7 @@ async function renderView(viewId) {
         container.innerHTML = html;
 
         // Add event listener for Enter key on search input
-        document.getElementById('adminUserSearch').addEventListener('keypress', function(e) {
+        document.getElementById('adminUserSearch').addEventListener('keypress', function (e) {
             if (e.key === 'Enter') filterAdminUsers();
         });
 
@@ -889,7 +895,7 @@ async function renderView(viewId) {
                             </tr>
                         </thead>
                         <tbody>`;
-        
+
         rules.forEach(r => {
             const isTimeRule = r.rule_name.includes('_time') || r.rule_name.includes('_start') || r.rule_name.includes('_end');
             let displayValue = Math.floor(r.rule_value);
@@ -929,7 +935,7 @@ async function renderView(viewId) {
             showLoader();
             // Fetch eligible substitutes (Faculty/HoD)
             const facultyList = await apiCall('/users.php/faculty');
-            
+
             // Filter out self
             const substitutes = facultyList ? facultyList.filter(u => u.id != state.user.id) : [];
             state.facultyCache = substitutes.map(u => `<option value="${u.id}">${u.name} (${u.department || ''})</option>`).join('');
@@ -1123,7 +1129,7 @@ async function renderView(viewId) {
                 const hStatus = l.hod_status.toLowerCase();
                 const pStatus = l.principal_status.toLowerCase();
                 const pdfLink = l.principal_status === 'Approved' ? `<button class="btn btn-sm btn-secondary" onclick="downloadPdf(${l.id})"><i class="fas fa-file-pdf"></i></button>` : '-';
-                
+
                 html += `
                     <tr>
                         <td data-label="Type"><strong>${escapeHtml(l.leave_type)}</strong></td>
@@ -1327,7 +1333,7 @@ async function handleApplyLeave(e) {
     // Calculate days for UI validation mapping
     const start = new Date(data.start_date);
     const end = new Date(data.end_date);
-    
+
     // Sunday Validation
     if (start.getDay() === 0 || end.getDay() === 0) {
         showToast("Leave cannot start or end on a Sunday.", "warning");
@@ -1340,7 +1346,7 @@ async function handleApplyLeave(e) {
     // Format Substitutions based on duration
     data.substitutions = [];
     let hasSelectedSubstitute = false;
-    
+
     // Check all keys for substitution data
     Object.keys(data).forEach(key => {
         if (key.startsWith('substitute_hour_')) {
@@ -1366,8 +1372,8 @@ async function handleApplyLeave(e) {
         showToast("Please select at least one hourly substitute for leaves 5 days or less.", "warning");
         return;
     }
-    
-    
+
+
     // If > 5 days, substitution array is just empty.
     const res = await apiCall('/leaves.php/apply', 'POST', data);
     if (!res.error) {
@@ -1417,7 +1423,7 @@ function hideCreateUserModal() {
     document.getElementById('createUserModal').style.display = 'none';
     const form = document.getElementById('userForm');
     if (form) form.reset();
-    
+
     // Reset to Create mode
     document.getElementById('userModalTitle').textContent = 'Create New User';
     document.getElementById('formMode').value = 'create';
@@ -1428,7 +1434,7 @@ function hideCreateUserModal() {
     document.getElementById('password_input').required = true;
 }
 
-window.editUser = async function(userId, page) {
+window.editUser = async function (userId, page) {
     state.usersPage = page;
 
     // Show modal
@@ -1448,7 +1454,7 @@ window.editUser = async function(userId, page) {
     if (!response || !response.users) return;
     const user = response.users.find(u => u.id == userId);
 
-    
+
     if (user) {
         document.getElementById('employee_code').value = user.employee_code || '';
         document.getElementById('user_name_input').value = user.name || '';
@@ -1499,7 +1505,7 @@ async function deleteUser(id, page) {
     }
 }
 
-window.filterAdminUsers = function() {
+window.filterAdminUsers = function () {
     const search = document.getElementById('adminUserSearch').value;
     const dept = document.getElementById('adminUserDept').value;
     renderView('users', 1, search, dept);
@@ -1604,7 +1610,7 @@ function calculateDaysAndShowSubstitutes() {
                 dayDate.setDate(startDate.getDate() + d);
                 // Format nicely
                 let dateStr = dayDate.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
-                
+
                 html += `<div style="margin-bottom: 20px;">
                             <h5 style="margin-top:0; margin-bottom:10px; border-bottom: 1px solid rgba(0,0,0,0.1); padding-bottom: 5px; color: var(--text-color);">Day ${d + 1} (${dateStr})</h5>
                             <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px;">`;
@@ -1767,10 +1773,10 @@ function toggleSidebar() {
 }
 window.toggleSidebar = toggleSidebar;
 
-window.loadDepartmentDrilldown = async function(dept) {
+window.loadDepartmentDrilldown = async function (dept) {
     const container = document.getElementById('drilldown-modal-container');
     if (!container) return;
-    
+
     // Show Loading Schema
     container.innerHTML = `
     <div style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 9999; display: flex; align-items: center; justify-content: center; backdrop-filter: blur(3px);">
@@ -1822,10 +1828,41 @@ window.loadDepartmentDrilldown = async function(dept) {
 
     container.querySelector('div.glass-card').innerHTML = `
         <button onclick="document.getElementById('drilldown-modal-container').style.display='none'" style="position: absolute; top: 15px; right: 20px; background: none; border: none; font-size: 1.5rem; cursor: pointer; color: var(--text-muted);">&times;</button>
-        <h2 style="margin-top: 0; margin-bottom: 20px; color: var(--primary);"><i class="fa fa-building" style="margin-right: 10px;"></i> ${escapeHtml(dept)} Department Leaves <small style="font-size: 0.5em; color: var(--text-muted); font-weight: normal;">(This Month)</small></h2>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+            <h2 style="margin: 0; color: var(--primary);"><i class="fa fa-building" style="margin-right: 10px;"></i> ${escapeHtml(dept)} Department Leaves <small style="font-size: 0.5em; color: var(--text-muted); font-weight: normal;">(This Month)</small></h2>
+            <button class="btn btn-primary btn-sm" onclick="downloadAuditReport('${escapeHtml(dept)}')"><i class="fas fa-file-pdf"></i> PDF Report</button>
+        </div>
         ${html}
     `;
 };
+
+async function downloadAuditReport(dept) {
+    showToast('Generating Audit Report...', 'info');
+    try {
+        const response = await fetch(`${API_URL}/generate_report.php?department=${encodeURIComponent(dept)}`, {
+            headers: { 'Authorization': `Bearer ${state.token}` }
+        });
+        if (response.ok) {
+            const blob = await response.blob();
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `Leave_Audit_${dept.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.pdf`;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            window.URL.revokeObjectURL(url);
+            showToast('Report downloaded successfully', 'success');
+        } else {
+            const err = await response.json();
+            showToast('Failed: ' + (err.error || 'Unknown error'), 'error');
+        }
+    } catch (e) {
+        console.error(e);
+        showToast('Error generating report', 'error');
+    }
+}
+window.downloadAuditReport = downloadAuditReport;
 
 /**
  * Chart.js Initialization
@@ -1837,7 +1874,7 @@ function initCharts(data, role) {
     if (ctxTrend) {
         const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
         const monthlyData = new Array(12).fill(0);
-        
+
         if (data.monthly_trends) {
             data.monthly_trends.forEach(t => {
                 const mIdx = parseInt(t.month) - 1;
@@ -1861,7 +1898,7 @@ function initCharts(data, role) {
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
-                plugins: { 
+                plugins: {
                     legend: { display: false },
                     tooltip: {
                         padding: 12,
@@ -1870,10 +1907,10 @@ function initCharts(data, role) {
                         bodyFont: { size: 13 }
                     }
                 },
-                scales: { 
-                    y: { 
-                        beginAtZero: true, 
-                        ticks: { stepSize: 1, font: { size: window.innerWidth < 768 ? 10 : 12 } } 
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: { stepSize: 1, font: { size: window.innerWidth < 768 ? 10 : 12 } }
                     },
                     x: {
                         ticks: { font: { size: window.innerWidth < 768 ? 9 : 12 } }
@@ -1888,8 +1925,8 @@ function initCharts(data, role) {
         let valueData = [];
         const colors = ['#0ea5e9', '#6366f1', '#10b981', '#f59e0b', '#ef4444'];
 
-        const distSource = isTeachingRole(role) 
-            ? data.distribution 
+        const distSource = isTeachingRole(role)
+            ? data.distribution
             : (role === 'hod' ? data.department_distribution : data.dept_stats);
 
         if (distSource) {
@@ -1913,13 +1950,13 @@ function initCharts(data, role) {
                 responsive: true,
                 maintainAspectRatio: false,
                 plugins: {
-                    legend: { 
-                        position: window.innerWidth < 768 ? 'bottom' : 'right', 
-                        labels: { 
-                            usePointStyle: true, 
+                    legend: {
+                        position: window.innerWidth < 768 ? 'bottom' : 'right',
+                        labels: {
+                            usePointStyle: true,
                             padding: 15,
                             font: { size: window.innerWidth < 768 ? 11 : 13 }
-                        } 
+                        }
                     }
                 },
                 cutout: '70%'
@@ -1936,7 +1973,7 @@ function initCalendar(data, role) {
     if (!calendarEl) return;
 
     let events = [];
-    
+
     if (role === 'hod' && data.department_coverage) {
         events = data.department_coverage.map(l => ({
             title: `${l.name} (${l.leave_type})`,
@@ -1970,7 +2007,7 @@ function initCalendar(data, role) {
         },
         events: events,
         height: 'auto',
-        eventClick: function(info) {
+        eventClick: function (info) {
             showToast(info.event.title, 'info');
         },
         dayMaxEvents: true,
