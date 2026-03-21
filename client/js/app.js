@@ -1,4 +1,5 @@
-const API_URL = '../server/api';
+const API_URL = 'http://localhost:8081/faculty-leave-management-system-cr/server/api';
+const BASE_URL = 'http://localhost:8081/faculty-leave-management-system-cr/server';
 
 // --- safeStorage Helper ---
 const safeStorage = {
@@ -287,6 +288,7 @@ function renderSidebar() {
     if (isTeachingRole(role)) {
         items.push({ id: 'apply', label: 'Apply Leave', icon: 'fa-paper-plane' });
         items.push({ id: 'leaves', label: 'My History', icon: 'fa-history' });
+        items.push({ id: 'substitutions', label: 'Substitutions', icon: 'fa-exchange-alt' });
         items.push({ id: 'apply-permission', label: 'Permission', icon: 'fa-clock' });
         items.push({ id: 'apply-outpass', label: 'Outpass', icon: 'fa-door-open' });
     }
@@ -873,6 +875,18 @@ async function renderView(viewId) {
                         <tbody>`;
         
         rules.forEach(r => {
+            const isTimeRule = r.rule_name.includes('_time') || r.rule_name.includes('_start') || r.rule_name.includes('_end');
+            let displayValue = Math.floor(r.rule_value);
+            let inputHtml = ``;
+
+            if (isTimeRule) {
+                const timeStr = displayValue.toString().padStart(4, '0');
+                const formattedTime = timeStr.slice(0, 2) + ':' + timeStr.slice(2);
+                inputHtml = `<input type="time" id="rule-val-${r.id}" class="form-control" value="${formattedTime}" data-is-time="true" style="width:120px; padding:4px 8px;">`;
+            } else {
+                inputHtml = `<input type="number" id="rule-val-${r.id}" class="form-control" value="${displayValue}" style="width:80px; padding:4px 8px;">`;
+            }
+
             html += `
                 <tr>
                     <td>
@@ -881,7 +895,7 @@ async function renderView(viewId) {
                     </td>
                     <td>${escapeHtml(r.rule_period)}</td>
                     <td>
-                        <input type="number" id="rule-val-${r.id}" class="form-control" value="${Math.floor(r.rule_value)}" style="width:80px; padding:4px 8px;">
+                        ${inputHtml}
                     </td>
                     <td>
                         <button class="btn btn-sm btn-primary" onclick="updateRule(${r.id})">Save</button>
@@ -1116,6 +1130,51 @@ async function renderView(viewId) {
         return;
     }
 
+    // -- Faculty: Substitutions --
+    if (viewId === 'substitutions') {
+        showLoader();
+        const substitutions = await apiCall('/leaves.php/substitutions/pending');
+
+        let html = `
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="card-title">Substitution Requests</h3>
+                </div>
+                <div class="table-responsive">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Faculty</th>
+                                <th>Date</th>
+                                <th>Hour</th>
+                                <th>Action</th>
+                            </tr>
+                        </thead>
+                        <tbody>`;
+
+        if (substitutions && substitutions.length > 0) {
+            substitutions.forEach(s => {
+                html += `
+                    <tr>
+                        <td data-label="Faculty"><strong>${escapeHtml(s.faculty_name)}</strong></td>
+                        <td data-label="Date">${s.leave_date}</td>
+                        <td data-label="Hour">Hour ${s.hour}</td>
+                        <td data-label="Action">
+                            <div style="display:flex; gap:8px;">
+                                <button class="btn btn-sm btn-primary" onclick="actionSubstitution(${s.id}, 'ACCEPTED')">Accept</button>
+                                <button class="btn btn-sm btn-secondary" onclick="actionSubstitution(${s.id}, 'REJECTED')">Reject</button>
+                            </div>
+                        </td>
+                    </tr>`;
+            });
+        } else {
+            html += `<tr><td colspan="4" style="text-align:center; padding:32px; color:var(--text-muted);">No pending substitution requests.</td></tr>`;
+        }
+        html += `</tbody></table></div></div>`;
+        container.innerHTML = html;
+        return;
+    }
+
     // -- Approvals (HoD / Principal) --
     if (viewId === 'approvals') {
         showLoader();
@@ -1171,26 +1230,114 @@ async function renderView(viewId) {
         return;
     }
 
-    // -- Signature Upload --
-    if (viewId === 'signature') {
+    // -- My Profile --
+    if (viewId === 'profile') {
+        showLoader();
+        const [me, sig] = await Promise.all([
+            apiCall('/users.php/me'),
+            apiCall('/upload_signature.php')
+        ]);
+
+        if (!me) {
+            container.innerHTML = `<div class="error-state">Failed to load profile data.</div>`;
+            return;
+        }
+
         container.innerHTML = `
-            <div class="card" style="max-width: 500px; margin: 0 auto; text-align: center;">
-                <div class="card-header">
-                    <h3 class="card-title">Digital Signature</h3>
-                </div>
-                <div style="padding: 32px;">
-                    <p style="margin-bottom: 24px; color: var(--text-muted);">Upload your signature image (PNG/JPG). This will be used for automated approval stamps.</p>
-                    
-                    <div id="sig-preview" style="margin-bottom: 24px; border: 2px dashed var(--border-light); padding: 20px; border-radius: 8px;">
-                        <span style="color: var(--text-muted);">No Signature Preview Available</span>
+            <div class="profile-container">
+                <div class="profile-header-card animate-fade-in">
+                    <div class="profile-avatar-large">
+                        ${me.name.charAt(0)}
                     </div>
-                    
-                    <form onsubmit="handleSignatureUpload(event)">
-                        <div class="form-group" style="text-align: left;">
-                            <input type="file" name="signature" class="form-control" accept="image/*" required>
+                    <div class="profile-title">
+                        <h2>${escapeHtml(me.name)}</h2>
+                        <span class="role-badge-large">${escapeHtml(me.role.toUpperCase())}</span>
+                    </div>
+                </div>
+
+                <div class="profile-grid">
+                    <div class="profile-card animate-fade-in" style="animation-delay: 0.1s;">
+                        <div class="card-header">
+                            <i class="fas fa-user-circle"></i>
+                            <h3>Personal Information</h3>
                         </div>
-                        <button type="submit" class="btn btn-primary btn-block">Upload Signature</button>
-                    </form>
+                        <div class="card-body">
+                            <div class="info-item">
+                                <div class="info-icon"><i class="fas fa-id-badge"></i></div>
+                                <div class="info-content">
+                                    <label>Employee Code</label>
+                                    <p>${escapeHtml(me.employee_code || 'N/A')}</p>
+                                </div>
+                            </div>
+                            <div class="info-item">
+                                <div class="info-icon"><i class="fas fa-building"></i></div>
+                                <div class="info-content">
+                                    <label>Department</label>
+                                    <p>${escapeHtml(me.department || 'N/A')}</p>
+                                </div>
+                            </div>
+                            <div class="info-item">
+                                <div class="info-icon"><i class="fas fa-briefcase"></i></div>
+                                <div class="info-content">
+                                    <label>Designation</label>
+                                    <p>${escapeHtml(me.designation || 'N/A')}</p>
+                                </div>
+                            </div>
+                            <div class="info-item">
+                                <div class="info-icon"><i class="fas fa-envelope"></i></div>
+                                <div class="info-content">
+                                    <label>Email Address</label>
+                                    <p>${escapeHtml(me.email || 'N/A')}</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="profile-card animate-fade-in" style="animation-delay: 0.2s;">
+                        <div class="card-header">
+                            <i class="fas fa-pen-fancy"></i>
+                            <h3>Digital Signature</h3>
+                        </div>
+                        <div class="card-body">
+                            <div class="sig-current-preview">
+                                ${sig && sig.signature ? 
+                                    `<img src="${BASE_URL}/${sig.signature}" alt="Current Signature">` : 
+                                    `<p class="text-muted">No signature uploaded</p>`
+                                }
+                            </div>
+                            
+                            <form onsubmit="handleSignatureUpload(event)">
+                                <div class="sig-upload-box" onclick="this.querySelector('input').click()">
+                                    <i class="fas fa-cloud-upload-alt"></i>
+                                    <p>Click to upload or drag & drop</p>
+                                    <small class="text-muted">PNG or JPG (Max 2MB)</small>
+                                    <input type="file" name="signature" style="display:none" accept="image/*" onchange="this.form.requestSubmit()">
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+
+                    <div class="profile-card full-width animate-fade-in" style="animation-delay: 0.3s;">
+                        <div class="card-header">
+                            <i class="fas fa-lock"></i>
+                            <h3>Account Security</h3>
+                        </div>
+                        <div class="card-body">
+                            <form onsubmit="handleUpdatePassword(event)" class="password-form">
+                                <div class="form-group">
+                                    <label>Current Password</label>
+                                    <input type="password" name="current_password" class="form-control" required placeholder="••••••••">
+                                </div>
+                                <div class="form-group">
+                                    <label>New Password</label>
+                                    <input type="password" name="new_password" class="form-control" required placeholder="••••••••">
+                                </div>
+                                <div class="form-group full-width" style="margin-top: 10px;">
+                                    <button type="submit" class="btn btn-primary" style="padding: 12px 30px;">Update Password</button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
                 </div>
             </div>`;
         return;
@@ -1456,9 +1603,13 @@ async function updateRule(id) {
     const valInput = document.getElementById(`rule-val-${id}`);
     if (!valInput) return;
 
-    const newVal = valInput.value;
+    let newVal = valInput.value;
+    if (valInput.dataset.isTime === 'true') {
+        newVal = parseInt(newVal.replace(':', ''), 10);
+    }
+
     if (newVal === '' || isNaN(newVal)) {
-        showToast("Please enter a valid number", "warning");
+        showToast("Please enter a valid value", "warning");
         return;
     }
 
@@ -1544,25 +1695,14 @@ async function handleApplyPermission(e) {
     const formData = new FormData(form);
     const data = Object.fromEntries(formData.entries());
 
-    // EXACT TIME VALIDATION (UX LEVEL)
-    const startStr = data.start_time;
-    const endStr = data.end_time;
+    // Hardcoded time validation removed to support dynamic leave rules from admin settings. 
+    // Backend handles precise validation and returns friendly error messages.
 
-    let isValid = false;
-    if ((startStr === '09:30' && endStr === '10:30') || (startStr === '16:30' && endStr === '17:30')) {
-        isValid = true;
-    }
-
-    if (!isValid && state.user.role !== 'admin') {
-        showToast("Permission is strictly allowed only for 09:30 AM - 10:30 AM OR 04:30 PM - 05:30 PM.", "warning");
-        return;
-    }
-
-    showNotification('Submitting permission request...', 'info');
+    showToast('Submitting permission request...', 'info');
     const res = await apiCall('/permissions.php/apply', 'POST', data);
     if (!res.error) {
-        showNotification('Permission requested successfully!', 'success');
-        renderView('permission');
+        showToast('Permission requested successfully!', 'success');
+        renderView('apply-permission');
     } else {
         showToast(res.error, 'error');
     }
@@ -1579,11 +1719,11 @@ async function handleApplyOutpass(e) {
         return;
     }
 
-    showNotification('Submitting outpass request...', 'info');
+    showToast('Submitting outpass request...', 'info');
     const res = await apiCall('/outpasses.php/apply', 'POST', data);
     if (!res.error) {
-        showNotification('Outpass requested successfully!', 'success');
-        renderView('outpass');
+        showToast('Outpass requested successfully!', 'success');
+        renderView('apply-outpass');
     } else {
         showToast(res.error, 'error');
     }
@@ -1747,11 +1887,31 @@ export {
     showCreateUserModal,
     hideCreateUserModal,
     handleCreateUser,
+    handleUpdatePassword,
     deleteUser,
     downloadPdf,
     handleSignatureUpload,
     calculateDaysAndShowSubstitutes
 };
+
+async function handleUpdatePassword(e) {
+    e.preventDefault();
+    const formData = new FormData(e.target);
+    const data = Object.fromEntries(formData.entries());
+
+    if (data.new_password.length < 6) {
+        showToast("New password must be at least 6 characters.", "warning");
+        return;
+    }
+
+    const res = await apiCall('/change_password.php', 'POST', data);
+    if (!res.error) {
+        showToast("Password updated successfully!", "success");
+        e.target.reset();
+    } else {
+        showToast(res.error, "error");
+    }
+}
 
 // Init
 if (window.location.pathname.includes('dashboard.html')) {

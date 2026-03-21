@@ -7,11 +7,15 @@ require_once __DIR__ . '/../core/audit.php';
 
 $method = $_SERVER['REQUEST_METHOD'];
 
-if ($method !== 'POST') {
-    http_response_code(405);
-    echo json_encode(["error" => "Method not allowed"]);
+if ($method === 'GET') {
+    $stmt = $conn->prepare("SELECT signature_path FROM users WHERE id = ?");
+    $stmt->execute([$global_user['id']]);
+    $row = $stmt->fetch();
+    echo json_encode(["signature" => $row['signature_path'] ?? null]);
     exit();
 }
+
+if ($method !== 'POST') {
 
 $user = $global_user;
 

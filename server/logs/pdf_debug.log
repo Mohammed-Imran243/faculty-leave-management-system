@@ -17,3 +17,22 @@
 2026-02-16 03:15:10 [PDF ERROR] Error fetching Leave ID 16: SQLSTATE[42S22]: Column not found: 1054 Unknown column 'u.designation' in 'field list'
 #0 {main}
 
+2026-03-20 13:47:04 [PDF ERROR] Error fetching Leave ID 5: SQLSTATE[42S22]: Column not found: 1054 Unknown column 'u.signature_path' in 'field list'
+#0 {main}
+
+2026-03-20 15:56:20 [PDF ERROR] Trying to access array offset on value of type null
+#0 C:\xampp\htdocs\faculty-leave-management-system-cr\server\api\generate_pdf.php(125): App\Core\ExceptionHandler::handleError(2, 'Trying to acces...', 'C:\\xampp\\htdocs...', 125)
+#1 {main}
+
+2026-03-20 15:57:09 [PDF ERROR] Trying to access array offset on value of type null
+#0 C:\xampp\htdocs\faculty-leave-management-system-cr\server\api\generate_pdf.php(125): App\Core\ExceptionHandler::handleError(2, 'Trying to acces...', 'C:\\xampp\\htdocs...', 125)
+#1 {main}
+
+2026-03-20 16:05:30 [PDF ERROR] htmlspecialchars(): Argument #1 ($string) must be of type string, null given
+#0 C:\xampp\htdocs\faculty-leave-management-system-cr\server\api\generate_pdf.php(311): htmlspecialchars(NULL)
+#1 {main}
+
+2026-03-20 16:11:07 [PDF ERROR] htmlspecialchars(): Argument #1 ($string) must be of type string, null given
+#0 C:\xampp\htdocs\faculty-leave-management-system-cr\server\api\generate_pdf.php(311): htmlspecialchars(NULL)
+#1 {main}
+

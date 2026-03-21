@@ -8,7 +8,10 @@ use App\Services\JwtService;
 class AuthService {
     public static function login($username, $password) {
         $db = Database::getInstance();
-        $stmt = $db->query("SELECT * FROM users WHERE username = :login OR email = :login", [':login' => $username]);
+        $stmt = $db->query("SELECT * FROM users WHERE username = :login1 OR email = :login2", [
+            ':login1' => $username,
+            ':login2' => $username
+        ]);
         $user = $stmt->fetch();
 
         if ($user && SecurityService::verifyPassword($password, $user['password_hash'])) {

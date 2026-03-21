@@ -60,7 +60,7 @@ try {
     if (!empty($perm['signature_path'])) {
         $sigPath = __DIR__ . '/../' . $perm['signature_path'];
         if ($perm['signature_path'] && file_exists($sigPath)) {
-            $facultySigImg = '<img src="../' . htmlspecialchars($perm['signature_path']) . '" height="60">';
+            $facultySigImg = '<img src="../' . htmlspecialchars($perm['signature_path'] ?? '') . '" height="60">';
         }
     }
     // --- Official Approval Stamps ---
@@ -156,7 +156,7 @@ try {
         <table class="content-table" style="margin-bottom: 25px;">
             <tr>
                 <td width="10%">From:</td>
-                <td width="40%" class="field-value">' . htmlspecialchars($perm['name']) . '</td>
+                <td width="40%" class="field-value">' . htmlspecialchars($perm['name'] ?? '') . '</td>
                 <td width="5%"></td>
                 <td width="45%" rowspan="2">
                      <div style="color: #640000;">
@@ -168,7 +168,7 @@ try {
             </tr>
             <tr>
                 <td>Dept :</td>
-                <td class="field-value">' . htmlspecialchars($perm['department']) . '</td>
+                <td class="field-value">' . htmlspecialchars($perm['department'] ?? '') . '</td>
                 <td></td>
             </tr>
         </table>

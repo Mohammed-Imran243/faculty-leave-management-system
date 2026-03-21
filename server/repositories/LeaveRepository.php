@@ -117,5 +117,10 @@ class LeaveRepository {
         $sql = "UPDATE leave_requests SET $column = :status WHERE id = :id";
         $this->db->query($sql, [':status' => $status, ':id' => $id]);
     }
+
+    public function getUserLeaves($userId) {
+        $sql = "SELECT * FROM leave_requests WHERE user_id = :uid ORDER BY created_at DESC";
+        return $this->db->query($sql, [':uid' => $userId])->fetchAll();
+    }
 }
 

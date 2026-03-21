@@ -48,7 +48,7 @@ try {
     if (!empty($outpass['signature_path'])) {
         $sigPath = __DIR__ . '/../' . $outpass['signature_path'];
         if ($outpass['signature_path'] && file_exists($sigPath)) {
-            $facultySigImg = '<img src="../' . htmlspecialchars($outpass['signature_path']) . '" height="60">';
+            $facultySigImg = '<img src="../' . htmlspecialchars($outpass['signature_path'] ?? '') . '" height="60">';
         }
     }
 
@@ -160,7 +160,7 @@ try {
             <tr>
                 <td class="field-label">Department</td>
                 <td class="field-col">:</td>
-                <td class="field-value">' . htmlspecialchars($outpass['department']) . '</td>
+                <td class="field-value">' . htmlspecialchars($outpass['department'] ?? '') . '</td>
             </tr>
             <tr>
                 <td class="field-label">Date</td>
@@ -180,7 +180,7 @@ try {
             <tr>
                 <td class="field-label">Reason</td>
                 <td class="field-col">:</td>
-                <td class="field-value">' . htmlspecialchars($outpass['reason']) . '</td>
+                <td class="field-value">' . htmlspecialchars($outpass['reason'] ?? '') . '</td>
             </tr>
         </table>
         

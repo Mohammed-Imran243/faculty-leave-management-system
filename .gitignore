@@ -4,3 +4,4 @@ node_modules/
 dist/
 build/
 server/config.local.php
+tmp/

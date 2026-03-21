@@ -104,7 +104,7 @@ class UserRepository {
     }
 
     private function validateRole($role) {
-        $allowed = ['admin', 'faculty', 'hod', 'principal'];
+        $allowed = ['admin', 'faculty', 'hod', 'principal', 'assistant professor (ap)', 'associate professor', 'professor', 'officer'];
         if (!in_array(strtolower($role), $allowed)) {
             throw new \Exception("Invalid role: $role");
         }

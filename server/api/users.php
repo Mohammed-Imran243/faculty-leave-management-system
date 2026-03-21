@@ -19,6 +19,11 @@ function ensureAdmin($global_user) {
 
 try {
     if ($method === 'GET') {
+        if ($path === '/me') {
+            echo json_encode($userRepo->findById($global_user['id']));
+            exit;
+        }
+
         if ($path === '/faculty') {
             // Special case for faculty selection in leave forms
             echo json_encode($userRepo->search('', '', 1, 1000)['users']);

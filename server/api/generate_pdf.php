@@ -122,9 +122,9 @@ try {
     // HOD Stamp
     $hodSigImg = '';
     if ($leave['hod_status'] === 'Approved') {
-        $hodDate = 'Date: ' . date('d.m.Y', strtotime($hodApproval['created_at']));
-        $timeStr = date('H:i:s', strtotime($hodApproval['created_at']));
-        $deptName = strtoupper($leave['department']);
+        $hodDate = 'Date: ' . date('d.m.Y', strtotime($hodApproval['created_at'] ?? 'now'));
+        $timeStr = date('H:i:s', strtotime($hodApproval['created_at'] ?? 'now'));
+        $deptName = strtoupper($leave['department'] ?? 'Dept');
         
         $hodSigImg = '
         <table style="border: 2px solid #006400; color: #006400; font-family: sans-serif; font-weight: bold; text-align: center; width: 180px; border-collapse: separate; border-spacing: 0; border-radius: 4px; box-shadow: inset 0 0 2px #006400;">
@@ -144,8 +144,8 @@ try {
     // Principal Stamp
     $princSigImg = '';
     if ($leave['principal_status'] === 'Approved') {
-         $princDate = 'Date: ' . date('d.m.Y', strtotime($principalApproval['created_at']));
-         $timeStr = date('H:i:s', strtotime($principalApproval['created_at']));
+         $princDate = 'Date: ' . date('d.m.Y', strtotime($principalApproval['created_at'] ?? 'now'));
+         $timeStr = date('H:i:s', strtotime($principalApproval['created_at'] ?? 'now'));
          
          $princSigImg = '
          <table style="border: 2px solid #006400; color: #006400; font-family: sans-serif; font-weight: bold; text-align: center; width: 180px; border-collapse: separate; border-spacing: 0; border-radius: 4px; box-shadow: inset 0 0 2px #006400;">
@@ -185,7 +185,7 @@ try {
     if (!empty($leave['signature_path'])) {
         $sigPath = __DIR__ . '/../' . $leave['signature_path'];
         if ($leave['signature_path'] && file_exists($sigPath)) {
-            $facultySigImg = '<img src="../' . htmlspecialchars($leave['signature_path']) . '" height="60">';
+            $facultySigImg = '<img src="../' . htmlspecialchars($leave['signature_path'] ?? '') . '" height="60">';
         }
     }
     
@@ -256,15 +256,15 @@ try {
         <table class="od-table">
             <tr>
                 <td class="od-label">From :</td>
-                <td class="od-value"><b>' . htmlspecialchars($leave['name']) . '</b></td>
+                <td class="od-value"><b>' . htmlspecialchars($leave['name'] ?? '') . '</b></td>
             </tr>
             <tr>
                 <td class="od-label">Designation :</td>
-                <td class="od-value">' . htmlspecialchars($designation) . '</td>
+                <td class="od-value">' . htmlspecialchars($designation ?? '') . '</td>
             </tr>
             <tr>
                 <td class="od-label">Department :</td>
-                <td class="od-value">' . htmlspecialchars($leave['department']) . '</td>
+                <td class="od-value">' . htmlspecialchars($leave['department'] ?? '') . '</td>
             </tr>
             <tr>
                 <td class="od-label">To :</td>
@@ -272,7 +272,7 @@ try {
             </tr>
             <tr>
                 <td class="od-label">Through :</td>
-                <td class="od-value"><b>The Head of Department (' . htmlspecialchars($hodName) . ')</b></td>
+                <td class="od-value"><b>The Head of Department (' . htmlspecialchars($hodName ?? 'HOD') . ')</b></td>
             </tr>
             <tr>
                 <td class="od-label">Date :</td>
@@ -284,7 +284,7 @@ try {
             </tr>
             <tr>
                 <td class="od-label">Reason (Official Duty) :</td>
-                <td class="od-value">' . htmlspecialchars($leave['reason']) . '</td>
+                <td class="od-value">' . htmlspecialchars($leave['reason'] ?? '') . '</td>
             </tr>
         </table>
 
@@ -306,9 +306,9 @@ try {
             <tr>
                 <td width="10%" class="field-label">From :</td>
                 <td width="40%">
-                    <div class="field-value" style="font-weight:bold">' . htmlspecialchars($leave['name']) . '</div>
-                    <div class="field-value">' . htmlspecialchars($designation) . '</div>
-                    <div class="field-value">' . htmlspecialchars($leave['department']) . '</div>
+                    <div class="field-value" style="font-weight:bold">' . htmlspecialchars($leave['name'] ?? '') . '</div>
+                    <div class="field-value">' . htmlspecialchars($designation ?? '') . '</div>
+                    <div class="field-value">' . htmlspecialchars($leave['department'] ?? '') . '</div>
                 </td>
                 <td width="5%"></td>
                 <td width="45%">
@@ -322,7 +322,7 @@ try {
             <tr>
                 <td class="field-label">Through HOD :</td>
                 <td>
-                    <div class="field-value">' . htmlspecialchars($hodName) . '</div>
+                    <div class="field-value">' . htmlspecialchars($hodName ?? 'N/A') . '</div>
                 </td>
                 <td colspan="2" style="text-align: right;">
                     <b>Date :</b> <u>' . $dateOfApp . '</u>
@@ -334,11 +334,11 @@ try {
         <div class="letter-body">
             Sir,<br>
             <div style="text-indent: 50px; margin-top: 10px;">
-                Kindly grant me <b>' . htmlspecialchars($leave['leave_type']) . '</b> leave for <b>' . $durationStr . '</b> day(s) 
+                Kindly grant me <b>' . htmlspecialchars($leave['leave_type'] ?? '') . '</b> leave for <b>' . ($durationStr ?? '0') . '</b> day(s) 
                 from <b>' . $startDate . '</b> to <b>' . $endDate . '</b>.
             </div>
             <div style="margin-top: 15px;">
-                <b>Reason :</b> <u>' . htmlspecialchars($leave['reason']) . '</u>
+                <b>Reason :</b> <u>' . htmlspecialchars($leave['reason'] ?? '') . '</u>
             </div>
             <div style="margin-top: 10px;">
                 <b>No. of days leave already availed :</b> <u>' . ($availedDays > 0 ? $availedDays : '_____') . '</u>
@@ -351,7 +351,7 @@ try {
                 Yours faithfully,<br><br>
                 <div style="height: 50px; display: flex; align-items: flex-end; justify-content: center;">' . $facultySigImg . '</div>
                 <br>
-                <b>' . htmlspecialchars($leave['name']) . '</b>
+                <b>' . htmlspecialchars($leave['name'] ?? '') . '</b>
             </div>
         </div>
         ';
@@ -378,16 +378,13 @@ try {
                 $html .= '<tr><td colspan="6" style="padding:15px; text-align:center;">No substitution required / arrangements made.</td></tr>';
             } else {
                 foreach ($subs as $s) {
-                    $sDate = date('D d.m.y', strtotime($s['date']));
-                    $sSub = htmlspecialchars($s['sub_name']);
-                    $status = ($s['status'] === 'ACCEPTED') ? 'Accepted' : $s['status'];
                     $html .= '<tr>
-                        <td>' . $sDate . '</td>
-                        <td>' . $s['hour_slot'] . '</td>
+                        <td>' . date('D d.m.y', strtotime($s['date'] ?? 'now')) . '</td>
+                        <td>' . htmlspecialchars($s['hour_slot'] ?? '-') . '</td>
                         <td>' . htmlspecialchars($s['class_name'] ?? '-') . '</td>
                         <td>' . htmlspecialchars($s['subject_code'] ?? '-') . '</td>
-                        <td style="text-align:left; padding-left:10px;">' . $sSub . '</td>
-                        <td>' . $status . '</td>
+                        <td style="text-align:left; padding-left:10px;">' . htmlspecialchars($s['sub_name'] ?? '-') . '</td>
+                        <td>' . (($s['status'] ?? '') === 'ACCEPTED' ? 'Accepted' : ($s['status'] ?? '')) . '</td>
                     </tr>';
                 }
             }
@@ -403,9 +400,9 @@ try {
                     <div style="font-weight: bold; margin-bottom: 10px;">Recommended and Submitted:</div>
                     <div class="sig-img-container" style="justify-content: flex-start; height: auto; margin-bottom: 10px;">' . $hodSigImg . '</div>
                     <div style="border-top: 1px solid #000; width: 80%;">
-                        <b>' . ($hodApproval ? htmlspecialchars($hodInfo['name']) : 'HOD Name') . '</b><br>
+                        <b>' . ($hodApproval ? htmlspecialchars($hodInfo['name'] ?? 'HOD') : 'HOD Name') . '</b><br>
                         HEAD OF THE DEPARTMENT<br>
-                        Date: ' . ($hodApproval ? date('d.m.y', strtotime($hodApproval['created_at'])) : '') . '
+                        Date: ' . ($hodApproval ? date('d.m.y', strtotime($hodApproval['created_at'] ?? 'now')) : '') . '
                     </div>
                 </td>
                 
@@ -415,10 +412,10 @@ try {
                     <div style="font-weight: bold; margin-bottom: 10px;">Granted:</div>
                     <div class="sig-img-container" style="justify-content: flex-end; height: auto; margin-bottom: 10px;">' . $princSigImg . '</div>
                     <div style="border-top: 1px solid #000; width: 80%; display: inline-block;">
-                        <b>' . ($principalApproval ? htmlspecialchars($princInfo['name']) : 'Principal') . '</b><br>
+                        <b>' . ($principalApproval ? htmlspecialchars($princInfo['name'] ?? 'Principal') : 'Principal') . '</b><br>
                         PRINCIPAL<br>
                          C. Abdul Hakeem College<br>
-                        Date: ' . ($principalApproval ? date('d.m.y', strtotime($principalApproval['created_at'])) : '') . '
+                        Date: ' . ($principalApproval ? date('d.m.y', strtotime($principalApproval['created_at'] ?? 'now')) : '') . '
                     </div>
                 </td>
             </tr>

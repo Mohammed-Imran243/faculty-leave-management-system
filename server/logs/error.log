@@ -150,3 +150,68 @@ Stack trace:
 [2026-03-16 10:28:49] Call to undefined method App\Repositories\LeaveRepository::getUserLeaves() in C:\xampp\htdocs\faculty-leave-management-system-cr\server\api\leaves.php:25
 #0 {main}
 
+[2026-03-19 06:07:29] Database Connection Error: SQLSTATE[HY000] [1045] Access denied for user 'root'@'localhost' (using password: YES) in C:\xampp\htdocs\faculty-leave-management-system-cr\server\core\Database.php:22
+#0 C:\xampp\htdocs\faculty-leave-management-system-cr\server\core\Database.php(28): App\Core\Database->__construct()
+#1 C:\xampp\htdocs\faculty-leave-management-system-cr\server\core\bootstrap.php(14): App\Core\Database::getInstance()
+#2 C:\xampp\htdocs\faculty-leave-management-system-cr\server\core\auth_guard.php(4): require_once('C:\\xampp\\htdocs...')
+#3 C:\xampp\htdocs\faculty-leave-management-system-cr\server\api\notifications.php(3): require_once('C:\\xampp\\htdocs...')
+#4 {main}
+
+[2026-03-19 06:07:29] Database Connection Error: SQLSTATE[HY000] [1045] Access denied for user 'root'@'localhost' (using password: YES) in C:\xampp\htdocs\faculty-leave-management-system-cr\server\core\Database.php:22
+#0 C:\xampp\htdocs\faculty-leave-management-system-cr\server\core\Database.php(28): App\Core\Database->__construct()
+#1 C:\xampp\htdocs\faculty-leave-management-system-cr\server\core\bootstrap.php(14): App\Core\Database::getInstance()
+#2 C:\xampp\htdocs\faculty-leave-management-system-cr\server\core\auth_guard.php(4): require_once('C:\\xampp\\htdocs...')
+#3 C:\xampp\htdocs\faculty-leave-management-system-cr\server\api\notifications.php(3): require_once('C:\\xampp\\htdocs...')
+#4 {main}
+
+[2026-03-19 06:07:38] Database Connection Error: SQLSTATE[HY000] [1045] Access denied for user 'root'@'localhost' (using password: YES) in C:\xampp\htdocs\faculty-leave-management-system-cr\server\core\Database.php:22
+#0 C:\xampp\htdocs\faculty-leave-management-system-cr\server\core\Database.php(28): App\Core\Database->__construct()
+#1 C:\xampp\htdocs\faculty-leave-management-system-cr\server\core\bootstrap.php(14): App\Core\Database::getInstance()
+#2 C:\xampp\htdocs\faculty-leave-management-system-cr\server\api\auth.php(3): require_once('C:\\xampp\\htdocs...')
+#3 {main}
+
+[2026-03-19 06:07:51] Database Connection Error: SQLSTATE[HY000] [1045] Access denied for user 'root'@'localhost' (using password: YES) in C:\xampp\htdocs\faculty-leave-management-system-cr\server\core\Database.php:22
+#0 C:\xampp\htdocs\faculty-leave-management-system-cr\server\core\Database.php(28): App\Core\Database->__construct()
+#1 C:\xampp\htdocs\faculty-leave-management-system-cr\server\core\bootstrap.php(14): App\Core\Database::getInstance()
+#2 C:\xampp\htdocs\faculty-leave-management-system-cr\server\api\auth.php(3): require_once('C:\\xampp\\htdocs...')
+#3 {main}
+
+[2026-03-19 06:15:51] Database Connection Error: SQLSTATE[HY000] [1045] Access denied for user 'root'@'localhost' (using password: YES) in C:\xampp\htdocs\faculty-leave-management-system-cr\server\core\Database.php:22
+#0 C:\xampp\htdocs\faculty-leave-management-system-cr\server\core\Database.php(28): App\Core\Database->__construct()
+#1 C:\xampp\htdocs\faculty-leave-management-system-cr\server\core\bootstrap.php(14): App\Core\Database::getInstance()
+#2 C:\xampp\htdocs\faculty-leave-management-system-cr\server\api\auth.php(3): require_once('C:\\xampp\\htdocs...')
+#3 {main}
+
+[2026-03-19 07:04:10] Database Connection Error: SQLSTATE[HY000] [1045] Access denied for user 'root'@'localhost' (using password: NO) in C:\xampp\htdocs\faculty-leave-management-system-cr\server\core\Database.php:22
+#0 C:\xampp\htdocs\faculty-leave-management-system-cr\server\core\Database.php(28): App\Core\Database->__construct()
+#1 C:\xampp\htdocs\faculty-leave-management-system-cr\server\core\bootstrap.php(14): App\Core\Database::getInstance()
+#2 C:\xampp\htdocs\faculty-leave-management-system-cr\list_users_temp.php(2): require_once('C:\\xampp\\htdocs...')
+#3 {main}
+
+[2026-03-20 04:57:40] SQLSTATE[42S02]: Base table or view not found: 1146 Table 'faculty_system.departments' doesn't exist in C:\xampp\htdocs\faculty-leave-management-system-cr\tmp\final_dump.php:9
+#0 C:\xampp\htdocs\faculty-leave-management-system-cr\tmp\final_dump.php(9): PDO->query('SELECT * FROM d...')
+#1 {main}
+
+[2026-03-20 05:42:57] Call to undefined method App\Repositories\LeaveRepository::getUserLeaves() in C:\xampp\htdocs\faculty-leave-management-system-cr\server\api\leaves.php:25
+#0 {main}
+
+[2026-03-20 06:34:55] SQLSTATE[42S02]: Base table or view not found: 1146 Table 'faculty_system.leave_rules' doesn't exist in C:\xampp\htdocs\faculty-leave-management-system-cr\server\api\analytics.php:25
+#0 C:\xampp\htdocs\faculty-leave-management-system-cr\server\api\analytics.php(25): PDOStatement->execute(Array)
+#1 C:\xampp\htdocs\faculty-leave-management-system-cr\server\api\analytics.php(60): get_rule_limit(Object(PDO), 'Casual Leave Li...', 12)
+#2 {main}
+
+[2026-03-20 06:42:14] SQLSTATE[42S02]: Base table or view not found: 1146 Table 'faculty_system.leave_rules' doesn't exist in C:\xampp\htdocs\faculty-leave-management-system-cr\server\api\analytics.php:25
+#0 C:\xampp\htdocs\faculty-leave-management-system-cr\server\api\analytics.php(25): PDOStatement->execute(Array)
+#1 C:\xampp\htdocs\faculty-leave-management-system-cr\server\api\analytics.php(60): get_rule_limit(Object(PDO), 'Casual Leave Li...', 12)
+#2 {main}
+
+[2026-03-20 06:45:29] SQLSTATE[42S02]: Base table or view not found: 1146 Table 'faculty_system.leave_rules' doesn't exist in C:\xampp\htdocs\faculty-leave-management-system-cr\server\api\analytics.php:25
+#0 C:\xampp\htdocs\faculty-leave-management-system-cr\server\api\analytics.php(25): PDOStatement->execute(Array)
+#1 C:\xampp\htdocs\faculty-leave-management-system-cr\server\api\analytics.php(60): get_rule_limit(Object(PDO), 'Casual Leave Li...', 12)
+#2 {main}
+
+[2026-03-20 14:01:38] Undefined array key "REQUEST_METHOD" in C:\xampp\htdocs\faculty-leave-management-system-cr\server\core\auth_guard.php:20
+#0 C:\xampp\htdocs\faculty-leave-management-system-cr\server\core\auth_guard.php(20): App\Core\ExceptionHandler::handleError(2, 'Undefined array...', 'C:\\xampp\\htdocs...', 20)
+#1 C:\xampp\htdocs\faculty-leave-management-system-cr\server\api\generate_pdf.php(11): require_once('C:\\xampp\\htdocs...')
+#2 {main}
+
