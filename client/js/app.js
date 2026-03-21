@@ -143,23 +143,21 @@ async function apiCall(endpoint, method = 'GET', body = null) {
 
 // --- Auth Functions ---
 async function login(username, password) {
-    try {
-        const data = await apiCall('/auth.php/login', 'POST', { username, password });
-        if (data && data.token) {
-            state.token = data.token;
-            state.user = data.user;
-            state.csrf = data.csrf_token;
+    const data = await apiCall('/auth.php/login', 'POST', { username, password });
+    if (data && data.token) {
+        state.token = data.token;
+        state.user = data.user;
+        state.csrf = data.csrf_token;
 
-            safeStorage.setItem('token', data.token);
-            safeStorage.setItem('user', JSON.stringify(data.user));
-            if (data.csrf_token) safeStorage.setItem('csrf', data.csrf_token);
+        safeStorage.setItem('token', data.token);
+        safeStorage.setItem('user', JSON.stringify(data.user));
+        if (data.csrf_token) safeStorage.setItem('csrf', data.csrf_token);
 
-            window.location.href = 'dashboard.html';
-        } else {
-            showToast('Login Failed: ' + (data?.error || 'Unknown Error'), 'error');
-        }
-    } catch (e) {
-        showToast("System Error: " + e.message, 'error');
+        window.location.href = 'dashboard.html';
+    } else {
+        const errorMsg = data?.error || 'Invalid credentials';
+        showToast('Login Failed: ' + errorMsg, 'error');
+        throw new Error(errorMsg);
     }
 }
 
