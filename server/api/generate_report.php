@@ -20,32 +20,66 @@ try {
         throw new Exception('Forbidden: Insufficient privileges', 403);
     }
 
-    $dept = isset($_GET['department']) ? $_GET['department'] : $user['department'];
+    $requestedDept = isset($_GET['department']) ? $_GET['department'] : null;
     $month = isset($_GET['month']) ? (int)$_GET['month'] : (int)date('m');
     $year = isset($_GET['year']) ? (int)$_GET['year'] : (int)date('Y');
 
-    // Security: HOD can only export their own department
-    if (strtolower($user['role']) === 'hod' && $dept !== $user['department']) {
-        throw new Exception('Access denied: You can only export reports for your own department.', 403);
+    $dept = null;
+    $isGlobal = false;
+
+    if (strtolower($user['role']) === 'hod') {
+        // HOD is strictly restricted to their own department from session
+        $dept = $user['department'];
+    } else {
+        // Principal/Admin can specify a department or 'all'
+        if (!$requestedDept || strtolower($requestedDept) === 'all') {
+            $isGlobal = true;
+        } else {
+            $dept = $requestedDept;
+        }
     }
 
     // Fetch Records
-    $stmt = $conn->prepare("
-        SELECT l.*, u.name as faculty_name, u.employee_code
-        FROM leave_requests l
-        JOIN users u ON l.user_id = u.id
-        WHERE u.department = ? 
-        AND (
-            (MONTH(l.start_date) = ? AND YEAR(l.start_date) = ?) OR
-            (MONTH(l.end_date) = ? AND YEAR(l.end_date) = ?)
-        )
-        ORDER BY l.start_date ASC
-    ");
-    $stmt->execute([$dept, $month, $year, $month, $year]);
+    if ($isGlobal) {
+        $stmt = $conn->prepare("
+            SELECT l.*, u.name as faculty_name, u.employee_code, u.department
+            FROM leave_requests l
+            JOIN users u ON l.user_id = u.id
+            WHERE (
+                (MONTH(l.start_date) = ? AND YEAR(l.start_date) = ?) OR
+                (MONTH(l.end_date) = ? AND YEAR(l.end_date) = ?)
+            )
+            ORDER BY u.department, l.start_date ASC
+        ");
+        $stmt->execute([$month, $year, $month, $year]);
+    } else {
+        $stmt = $conn->prepare("
+            SELECT l.*, u.name as faculty_name, u.employee_code, u.department
+            FROM leave_requests l
+            JOIN users u ON l.user_id = u.id
+            WHERE u.department = ? 
+            AND (
+                (MONTH(l.start_date) = ? AND YEAR(l.start_date) = ?) OR
+                (MONTH(l.end_date) = ? AND YEAR(l.end_date) = ?)
+            )
+            ORDER BY l.start_date ASC
+        ");
+        $stmt->execute([$dept, $month, $year, $month, $year]);
+    }
     $records = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
+    // Audit Logging
+    require_once __DIR__ . '/../core/audit.php';
+    logAudit($conn, (int)$user['id'], 'DOWNLOAD_REPORT', [
+        'is_global' => $isGlobal,
+        'department' => $dept ?? 'ALL',
+        'month' => $month,
+        'year' => $year
+    ]);
+
     $monthName = date('F', mktime(0, 0, 0, $month, 10));
-    $title = "Leave Audit Report - " . htmlspecialchars($dept) . " (" . $monthName . " " . $year . ")";
+    $reportTarget = $isGlobal ? "All Departments" : htmlspecialchars((string)($dept ?? 'N/A'));
+    $title = "Faculty Leave Report - " . $reportTarget . " (" . $monthName . " " . $year . ")";
 
     // HTML Construction
     $html = '
@@ -76,11 +110,11 @@ try {
             <thead>
                 <tr>
                     <th width="20%">Faculty Name</th>
-                    <th width="15%">Emp Code</th>
+                    <th width="12%">Emp Code</th>
+                    <th width="10%">Dept</th>
                     <th width="15%">Leave Type</th>
                     <th width="25%">Date Range</th>
-                    <th width="10%">Days</th>
-                    <th width="15%">Status</th>
+                    <th width="18%">Status (HOD/Pri)</th>
                 </tr>
             </thead>
             <tbody>';
@@ -88,27 +122,26 @@ try {
     if (empty($records)) {
         $html .= '<tr><td colspan="6" style="text-align:center; padding: 20px;">No leave records found for this period.</td></tr>';
     } else {
-        foreach ($records as $r) {
-            $startDate = date('d-m-Y', strtotime($r['start_date']));
-            $endDate = date('d-m-Y', strtotime($r['end_date']));
-            $range = ($startDate === $endDate) ? $startDate : "$startDate to $endDate";
-            
-            // Calculate actual days logic simplified for report
-            $d1 = new DateTime($r['start_date']);
-            $d2 = new DateTime($r['end_date']);
-            $days = $d1->diff($d2)->days + 1;
-            
-            $status = ($r['principal_status'] !== 'Pending') ? $r['principal_status'] : $r['hod_status'];
+            foreach ($records as $r) {
+                $startDate = date('d-m-Y', strtotime($r['start_date']));
+                $endDate = date('d-m-Y', strtotime($r['end_date']));
+                $range = ($startDate === $endDate) ? $startDate : "$startDate to $endDate";
+                
+                $hStatus = $r['hod_status'];
+                $pStatus = $r['principal_status'];
 
-            $html .= '<tr>
-                <td>' . htmlspecialchars($r['faculty_name']) . '</td>
-                <td>' . htmlspecialchars($r['employee_code'] ?? 'N/A') . '</td>
-                <td>' . htmlspecialchars($r['leave_type']) . '</td>
-                <td>' . $range . '</td>
-                <td>' . $days . '</td>
-                <td><span class="status-' . $status . '">' . $status . '</span></td>
-            </tr>';
-        }
+                $html .= '<tr>
+                    <td>' . htmlspecialchars((string)($r['faculty_name'] ?? 'N/A')) . '</td>
+                    <td>' . htmlspecialchars((string)($r['employee_code'] ?? 'N/A')) . '</td>
+                    <td>' . htmlspecialchars((string)($r['department'] ?? 'N/A')) . '</td>
+                    <td>' . htmlspecialchars((string)($r['leave_type'] ?? 'N/A')) . '</td>
+                    <td>' . $range . '</td>
+                    <td>
+                        <span class="status-' . $hStatus . '">' . $hStatus . '</span> / 
+                        <span class="status-' . $pStatus . '">' . $pStatus . '</span>
+                    </td>
+                </tr>';
+            }
     }
 
     $html .= '
@@ -145,7 +178,11 @@ try {
     
     $mpdf->WriteHTML($html);
     
-    $filename = "Leave_Audit_" . str_replace(' ', '_', $dept) . "_" . $monthName . "_" . $year . ".pdf";
+    if ($isGlobal) {
+        $filename = "all_faculty_leave_report_" . date('Y-m-d') . ".pdf";
+    } else {
+        $filename = "department_leave_report_" . str_replace(' ', '_', (string)$dept) . "_" . date('Y-m-d') . ".pdf";
+    }
 
     while (ob_get_level()) ob_end_clean();
 

@@ -215,3 +215,7 @@ Stack trace:
 #1 C:\xampp\htdocs\faculty-leave-management-system-cr\server\api\generate_pdf.php(11): require_once('C:\\xampp\\htdocs...')
 #2 {main}
 
+[2026-03-22 17:33:03] htmlspecialchars(): Argument #1 ($string) must be of type string, null given in C:\xampp\htdocs\faculty-leave-management-system-cr\server\api\generate_report.php:85
+#0 C:\xampp\htdocs\faculty-leave-management-system-cr\server\api\generate_report.php(85): htmlspecialchars(NULL)
+#1 {main}
+

@@ -646,6 +646,18 @@ async function renderView(viewId) {
                 html += `<tr><td style="color:var(--text-muted);">No substitution items.</td></tr>`;
             }
             html += `</tbody></table></div></div>
+            
+            <div class="card" style="margin-top:20px;">
+                <div class="card-header">
+                    <h3 class="card-title">Department Reports</h3>
+                    <button class="btn btn-primary btn-sm" onclick="downloadReport('dept')">
+                        <i class="fas fa-file-pdf"></i> Download Leave Report
+                    </button>
+                </div>
+                <div style="padding:16px; color:var(--text-muted); font-size:0.9rem;">
+                    Generate a comprehensive PDF report of all faculty leave requests for your department (${escapeHtml(state.user.department)}).
+                </div>
+            </div>
             </div>`;
 
         } else if (role === 'principal' || role === 'admin') {
@@ -741,7 +753,10 @@ async function renderView(viewId) {
             </div>
 
             <div class="card" style="margin-top: 24px;">
-                <div class="card-header"><h3 class="card-title">Faculty Leave Summary</h3></div>
+                <div class="card-header">
+                    <h3 class="card-title">Faculty Leave Summary</h3>
+                    <button class="btn btn-primary btn-sm" onclick="downloadReport('all')"><i class="fas fa-file-pdf"></i> Download All Faculty Leave Report</button>
+                </div>
                 <div class="table-responsive">
                     <table>
                         <thead>
@@ -2029,8 +2044,51 @@ export {
     handleUpdatePassword,
     deleteUser,
     downloadPdf,
+    downloadReport,
     calculateDaysAndShowSubstitutes
 };
+
+async function downloadReport(type) {
+    showToast('Preparing PDF Report...', 'info');
+    try {
+        const url = type === 'all' ? `${API_URL}/generate_report.php?department=all` : `${API_URL}/generate_report.php`;
+        const response = await fetch(url, {
+            headers: { 'Authorization': `Bearer ${state.token}` }
+        });
+        
+        if (response.ok) {
+            const blob = await response.blob();
+            const downloadUrl = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = downloadUrl;
+            
+            // Extract filename from header if possible, else use default
+            const disposition = response.headers.get('Content-Disposition');
+            let filename = type === 'all' ? 'all_faculty_leave_report.pdf' : 'department_leave_report.pdf';
+            if (disposition && disposition.indexOf('attachment') !== -1) {
+                const filenameRegex = /filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/;
+                const matches = filenameRegex.exec(disposition);
+                if (matches != null && matches[1]) { 
+                    filename = matches[1].replace(/['"]/g, '');
+                }
+            }
+            
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(downloadUrl);
+            a.remove();
+            showToast('Report downloaded successfully!', 'success');
+        } else {
+            const err = await response.json();
+            showToast('Failed to generate report: ' + (err.error || 'Unknown error'), 'error');
+        }
+    } catch (e) {
+        console.error(e);
+        showToast('System error generating report', 'error');
+    }
+}
+window.downloadReport = downloadReport;
 
 async function handleUpdatePassword(e) {
     e.preventDefault();
