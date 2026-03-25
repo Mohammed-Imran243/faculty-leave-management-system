@@ -22,10 +22,12 @@ try {
         handleApplyLeave($data, $global_user, $leaveRepo, $ruleRepo, $notifRepo, $db);
         
     } elseif ($method === 'GET' && $path === '/my-leaves') {
-        echo json_encode($leaveRepo->getUserLeaves($global_user['id']));
+        $leaves = $leaveRepo->getUserLeaves($global_user['id']);
+        echo json_encode($leaves);
         
     } elseif ($method === 'GET' && $path === '/substitutions/pending') {
-        echo json_encode($leaveRepo->getPendingSubstitutions($global_user['id']));
+        $subs = $leaveRepo->getPendingSubstitutions($global_user['id']);
+        echo json_encode($subs);
         
     } elseif ($method === 'PUT' && preg_match('/^\/substitutions\/(\d+)\/respond$/', $path, $matches)) {
         $data = json_decode(file_get_contents("php://input"), true);
@@ -33,10 +35,24 @@ try {
         echo json_encode(["message" => "Substitution updated"]);
         
     } elseif ($method === 'GET' && $path === '/pending/hod') {
-        echo json_encode($leaveRepo->getPendingHod($global_user['department']));
+        $leaves = $leaveRepo->getPendingHod($global_user['department']);
+        foreach ($leaves as &$l) {
+            
+            // Get Substitutions Summary
+            $subs = $db->query("SELECT s.hour_slot, u.name FROM leave_substitutions s JOIN users u ON s.substitute_user_id = u.id WHERE s.leave_request_id = ?", [$l['id']])->fetchAll();
+            $l['substitutions_v2'] = implode(', ', array_map(fn($s) => "H{$s['hour_slot']}: {$s['name']}", $subs));
+        }
+        echo json_encode($leaves);
         
     } elseif ($method === 'GET' && $path === '/pending/principal') {
-        echo json_encode($leaveRepo->getPendingPrincipal());
+        $leaves = $leaveRepo->getPendingPrincipal();
+        foreach ($leaves as &$l) {
+            
+            // Get Substitutions Summary
+            $subs = $db->query("SELECT s.hour_slot, u.name FROM leave_substitutions s JOIN users u ON s.substitute_user_id = u.id WHERE s.leave_request_id = ?", [$l['id']])->fetchAll();
+            $l['substitutions_v2'] = implode(', ', array_map(fn($s) => "H{$s['hour_slot']}: {$s['name']}", $subs));
+        }
+        echo json_encode($leaves);
         
     } elseif ($method === 'PUT' && preg_match('/^\/(\d+)\/approve\/hod$/', $path, $matches)) {
         $data = json_decode(file_get_contents("php://input"), true);
@@ -46,17 +62,21 @@ try {
         $data = json_decode(file_get_contents("php://input"), true);
         handlePrincipalApprove($matches[1], $data, $global_user, $leaveRepo, $notifRepo);
         
+    } elseif ($method === 'POST' && preg_match('/^\/(\d+)\/cancel$/', $path, $matches)) {
+        handleCancelLeave($matches[1], $global_user, $leaveRepo, $notifRepo);
+        
     } else {
         http_response_code(404);
         echo json_encode(["error" => "Route or method not found."]);
     }
-} catch (\Exception $e) {
-    http_response_code(500);
+} catch (\Throwable $e) {
+    $code = ($e instanceof \Error) ? 500 : 400;
+    http_response_code($code);
     echo json_encode(["error" => $e->getMessage()]);
 }
 
 function handleHodApprove($id, $data, $user, $leaveRepo, $notifRepo) {
-    if (strtolower($user['role']) !== 'hod') throw new Exception("Unauthorized");
+    if (!in_array(strtolower($user['role']), ['hod', 'admin'])) throw new Exception("Unauthorized");
     
     // Check subs
     $summary = $leaveRepo->getSubstitutionSummary($id);
@@ -65,6 +85,7 @@ function handleHodApprove($id, $data, $user, $leaveRepo, $notifRepo) {
     }
 
     $leaveRepo->updateStatus($id, 'hod_status', $data['status']);
+    $leaveRepo->logApproval($id, $user['id'], 'hod', $data['status']);
     
     // Notify
     $leave = $leaveRepo->findById($id);
@@ -73,13 +94,30 @@ function handleHodApprove($id, $data, $user, $leaveRepo, $notifRepo) {
 }
 
 function handlePrincipalApprove($id, $data, $user, $leaveRepo, $notifRepo) {
-    if (strtolower($user['role']) !== 'principal') throw new Exception("Unauthorized");
+    if (!in_array(strtolower($user['role']), ['principal', 'admin'])) throw new Exception("Unauthorized");
     
     $leaveRepo->updateStatus($id, 'principal_status', $data['status']);
+    $leaveRepo->logApproval($id, $user['id'], 'principal', $data['status']);
     
+    if ($data['status'] === 'Rejected') {
+        $leaveRepo->releaseSubstitutions($id);
+    }
+
     $leave = $leaveRepo->findById($id);
     $notifRepo->create($leave['user_id'], "Leave " . $data['status'] . " by Principal", 'LEAVE_UPDATE');
     echo json_encode(["message" => "Principal approval updated"]);
+}
+
+function handleCancelLeave($id, $user, $leaveRepo, $notifRepo) {
+    $leave = $leaveRepo->findById($id);
+    if (!$leave || $leave['user_id'] != $user['id']) throw new Exception("Unauthorized");
+    if ($leave['principal_status'] !== 'Pending') throw new Exception("Cannot cancel already processed leave.");
+
+    $leaveRepo->updateStatus($id, 'hod_status', 'Cancelled');
+    $leaveRepo->updateStatus($id, 'principal_status', 'Cancelled');
+    $leaveRepo->releaseSubstitutions($id);
+
+    echo json_encode(["message" => "Leave cancelled successfully"]);
 }
 
 
@@ -87,6 +125,11 @@ function handleApplyLeave($data, $user, $leaveRepo, $ruleRepo, $notifRepo, $db) 
     // Basic Validation
     if (empty($data['start_date']) || empty($data['end_date'])) {
         throw new Exception("Missing dates");
+    }
+
+    // Overlap Check
+    if ($leaveRepo->hasOverlap($user['id'], $data['start_date'], $data['end_date'])) {
+        throw new Exception("Overlap detected. You already have a pending/approved leave for these dates.");
     }
 
     $start = new DateTime($data['start_date']);
@@ -109,10 +152,10 @@ function handleApplyLeave($data, $user, $leaveRepo, $ruleRepo, $notifRepo, $db) 
 
     if ($total_days == 0) throw new Exception("Invalid date range (only Sundays selected).");
 
-    // Check Limits
+    // Check Limits (Yearly for all leaves in this table)
     $limitRule = $ruleRepo->findByName($data['leave_type'] . ' Limit');
     $limit = $limitRule ? (float)$limitRule['rule_value'] : 12;
-    $used = $leaveRepo->getUsedDays($user['id'], $data['leave_type'], $start->format('m'), $start->format('Y'));
+    $used = $leaveRepo->getUsedDays($user['id'], $data['leave_type'], null, $start->format('Y'));
 
     if (($used + $total_days) > $limit && !($data['is_override'] ?? false)) {
         throw new Exception("Policy limit exceeded: Max $limit days for " . $data['leave_type'] . ".");
@@ -122,6 +165,16 @@ function handleApplyLeave($data, $user, $leaveRepo, $ruleRepo, $notifRepo, $db) 
     $db->beginTransaction();
     try {
         $data['user_id'] = $user['id'];
+        
+        // Auto-approve HOD's own request for HOD stage
+        if (strtolower($user['role']) === 'hod') {
+            $data['hod_status'] = 'Approved';
+        }
+        // Auto-approve Principal's own request for Principal stage (HOD still needs to approve)
+        if (strtolower($user['role']) === 'principal') {
+            $data['principal_status'] = 'Approved';
+        }
+
         $leaveId = $leaveRepo->create($data);
 
         if (!empty($data['substitutions'])) {
@@ -133,10 +186,18 @@ function handleApplyLeave($data, $user, $leaveRepo, $ruleRepo, $notifRepo, $db) 
                     throw new Exception("Selected substitute is already booked for Hour " . $sub['hour'] . " on " . $subDate);
                 }
 
-                $leaveRepo->addSubstitution($leaveId, $subDate, $sub['hour'], $sub['substitute_id']);
+                $leaveRepo->addSubstitution(
+                    $leaveId, 
+                    $subDate, 
+                    $sub['hour'], 
+                    $sub['substitute_id'],
+                    $sub['class_name'] ?? null,
+                    $sub['subject_code'] ?? null
+                );
                 $notifRepo->create($sub['substitute_id'], "New substitution request from " . $user['name'], 'SUBSTITUTION');
             }
         }
+
         $db->commit();
 
         // Purge Analytics Cache

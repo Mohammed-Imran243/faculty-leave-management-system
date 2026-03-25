@@ -10,22 +10,65 @@ class LeaveRepository {
         $this->db = Database::getInstance();
     }
 
-    public function getUsedDays($userId, $leaveType, $month, $year) {
-        $sql = "SELECT SUM(DATEDIFF(end_date, start_date) + 1) as used_days 
-                FROM leave_requests 
+    public function getUsedDays($userId, $leaveType, $month = null, $year = null) {
+        if (!$year) $year = date('Y');
+        $sql = "SELECT start_date, end_date FROM leave_requests 
                 WHERE user_id = :uid 
                 AND leave_type = :type 
-                AND MONTH(start_date) = :m 
-                AND YEAR(start_date) = :y 
-                AND hod_status != 'Rejected' 
-                AND principal_status != 'Rejected'";
+                AND hod_status NOT IN ('Rejected', 'Cancelled') 
+                AND principal_status NOT IN ('Rejected', 'Cancelled')";
         
-        return $this->db->query($sql, [
+        $leaves = $this->db->query($sql, [
             ':uid'  => $userId,
-            ':type' => $leaveType,
-            ':m'    => $month,
-            ':y'    => $year
-        ])->fetchColumn() ?: 0;
+            ':type' => $leaveType
+        ])->fetchAll();
+
+        $total = 0;
+        foreach ($leaves as $l) {
+            $start = new \DateTime($l['start_date']);
+            $end = new \DateTime($l['end_date']);
+            $curr = clone $start;
+            while ($curr <= $end) {
+                $matchesMonth = $month ? ($curr->format('m') == $month) : true;
+                if ($matchesMonth && $curr->format('Y') == $year && $curr->format('N') != 7) {
+                    $total++;
+                }
+                $curr->modify('+1 day');
+            }
+        }
+        return $total;
+    }
+
+    public function hasOverlap($userId, $start, $end) {
+        $sql = "SELECT COUNT(*) FROM leave_requests 
+                WHERE user_id = :uid 
+                AND hod_status != 'Rejected' 
+                AND principal_status != 'Rejected'
+                AND (
+                    (start_date BETWEEN :s AND :e) OR 
+                    (end_date BETWEEN :s AND :e) OR 
+                    (:s BETWEEN start_date AND end_date)
+                )";
+        return $this->db->query($sql, [
+            ':uid' => $userId, ':s' => $start, ':e' => $end
+        ])->fetchColumn() > 0;
+    }
+
+    public function logApproval($leaveId, $userId, $role, $status) {
+        $action = strtoupper($status);
+        $sql = "INSERT INTO approvals (leave_request_id, approver_id, role_at_time, action) 
+                VALUES (:lid, :aid, :role, :action)";
+        $this->db->query($sql, [
+            ':lid'    => $leaveId,
+            ':aid'    => $userId,
+            ':role'   => $role,
+            ':action' => $action
+        ]);
+    }
+
+    public function releaseSubstitutions($leaveId) {
+        $sql = "UPDATE leave_substitutions SET status = 'CANCELLED' WHERE leave_request_id = :lid";
+        $this->db->query($sql, [':lid' => $leaveId]);
     }
 
     public function checkDuplicate($userId, $start, $end, $type) {
@@ -57,16 +100,19 @@ class LeaveRepository {
         return $this->db->getConnection()->lastInsertId();
     }
 
-    public function addSubstitution($leaveId, $date, $period, $subId) {
-        $sql = "INSERT INTO leave_substitutions (leave_request_id, date, hour_slot, substitute_user_id, status) 
-                VALUES (:lid, :date, :slot, :sid, 'PENDING')";
+    public function addSubstitution($leaveId, $date, $period, $subId, $className = null, $subjectCode = null) {
+        $sql = "INSERT INTO leave_substitutions (leave_request_id, date, hour_slot, class_name, subject_code, substitute_user_id, status) 
+                VALUES (:lid, :date, :slot, :cname, :subcode, :sid, 'PENDING')";
         $this->db->query($sql, [
-            ':lid'  => $leaveId,
-            ':date' => $date,
-            ':slot' => $period,
-            ':sid'  => $subId
+            ':lid'   => $leaveId,
+            ':date'  => $date,
+            ':slot'  => $period,
+            ':cname' => $className,
+            ':subcode' => $subjectCode,
+            ':sid'   => $subId
         ]);
     }
+
 
     public function checkSubstituteConflict($subId, $date, $slot) {
         $sql = "SELECT COUNT(*) FROM leave_substitutions 
@@ -82,7 +128,7 @@ class LeaveRepository {
     }
 
     public function getPendingSubstitutions($userId) {
-        $sql = "SELECT ls.*, l.leave_type, l.start_date, l.end_date, l.reason, u.name as requester_name 
+        $sql = "SELECT ls.*, ls.date as leave_date, ls.hour_slot as hour, l.leave_type, l.start_date, l.end_date, l.reason, u.name as faculty_name 
                 FROM leave_substitutions ls
                 JOIN leave_requests l ON ls.leave_request_id = l.id
                 JOIN users u ON l.user_id = u.id
@@ -107,7 +153,7 @@ class LeaveRepository {
     }
 
     public function getPendingHod($dept) {
-        $sql = "SELECT l.*, u.name, u.department,
+        $sql = "SELECT l.*, u.name as faculty_name, u.department,
                 (SELECT COUNT(*) FROM leave_substitutions ls WHERE ls.leave_request_id = l.id) as total_subs,
                 (SELECT COUNT(*) FROM leave_substitutions ls WHERE ls.leave_request_id = l.id AND ls.status = 'ACCEPTED') as accepted_subs
                 FROM leave_requests l 
@@ -117,7 +163,7 @@ class LeaveRepository {
     }
 
     public function getPendingPrincipal() {
-        $sql = "SELECT l.*, u.name, u.department FROM leave_requests l 
+        $sql = "SELECT l.*, u.name as faculty_name, u.department FROM leave_requests l 
                 JOIN users u ON l.user_id = u.id 
                 WHERE l.hod_status = 'Approved' AND l.principal_status = 'Pending'";
         return $this->db->query($sql)->fetchAll();
@@ -132,7 +178,12 @@ class LeaveRepository {
     }
 
     public function getUserLeaves($userId) {
-        $sql = "SELECT * FROM leave_requests WHERE user_id = :uid ORDER BY created_at DESC";
+        $sql = "SELECT l.*, 
+                (SELECT GROUP_CONCAT(CONCAT(class_name, ' (', subject_code, ') - H', hour_slot) SEPARATOR ' | ') 
+                 FROM leave_substitutions ls WHERE ls.leave_request_id = l.id) as arrangements
+                FROM leave_requests l 
+                WHERE l.user_id = :uid 
+                ORDER BY l.created_at DESC";
         return $this->db->query($sql, [':uid' => $userId])->fetchAll();
     }
 }

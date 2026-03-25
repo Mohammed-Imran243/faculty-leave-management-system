@@ -167,9 +167,11 @@ function logout() {
     state.user = null;
     window.location.href = 'index.html';
 }
+window.logout = logout;
 
 // --- Dashboard Logic ---
 function initDashboard() {
+    initTheme();
     if (!state.token) {
         window.location.href = 'index.html';
         return;
@@ -236,7 +238,7 @@ function updateNotificationUI() {
 
     const unreadCount = state.notifications.filter(n => !n.is_read).length;
     badge.textContent = unreadCount;
-    badge.style.display = unreadCount > 0 ? 'flex' : 'none';
+    badge.classList.toggle('hidden', unreadCount === 0);
 
     list.innerHTML = '';
     if (state.notifications.length === 0) {
@@ -261,12 +263,6 @@ function updateNotificationUI() {
 function toggleNotifications() {
     const d = document.getElementById('notif-dropdown');
     d.classList.toggle('active');
-    // Simple toggle logic
-    if (d.style.display === 'block') {
-        d.style.display = 'none';
-    } else {
-        d.style.display = 'block';
-    }
 }
 
 async function markNotificationRead(id) {
@@ -356,9 +352,7 @@ async function renderView(viewId) {
 
     const container = document.getElementById('content-area');
     const showLoader = () => {
-        container.innerHTML = `<div style="display:flex; justify-content:center; align-items:center; height:200px; color:var(--text-muted);">
-                                 <i class="fa fa-spinner fa-spin fa-2x" style="margin-right:10px;"></i> Loading...
-                               </div>`;
+        container.innerHTML = `<div class="state-loader"><i class="fa fa-spinner fa-spin fa-2x"></i> Loading...</div>`;
     };
 
     // -- Analytics Dashboard --
@@ -413,7 +407,7 @@ async function renderView(viewId) {
             </div>
 
             <div class="dashboard-sections">
-                <div class="left-section" style="display: flex; flex-direction: column; gap: 25px;">
+                <div class="left-section" class="flex-column gap-md">
                     <div class="chart-card">
                         <div class="section-header">
                             <h3>Monthly Leave Trends</h3>
@@ -432,7 +426,7 @@ async function renderView(viewId) {
                     </div>
                 </div>
 
-                <div class="right-section" style="display: flex; flex-direction: column; gap: 25px;">
+                <div class="right-section" class="flex-column gap-md">
                     <div class="chart-card" style="min-height: 400px;">
                         <div class="section-header">
                             <h3>Leave Type Distribution</h3>
@@ -465,7 +459,7 @@ async function renderView(viewId) {
                         </tr>`;
                 });
             } else {
-                html += `<tr><td colspan="3" style="text-align:center; padding:20px;">No pending requests found.</td></tr>`;
+                html += `<tr><td colspan="3" class="state-empty">No pending requests found.</td></tr>`;
             }
 
             html += `
@@ -487,7 +481,7 @@ async function renderView(viewId) {
                         </div>`;
                 });
             } else {
-                html += `<p style="text-align:center; color:var(--text-muted);">No pending substitutions.</p>`;
+                html += `<p class="state-empty border-none">No pending substitutions.</p>`;
             }
 
             html += `
@@ -499,37 +493,37 @@ async function renderView(viewId) {
         } else if (role === 'hod') {
             const currentDept = state.user.department || '';
             html += `
-            <div class="stats-grid">
-                <div class="stat-card">
+            <div class="stats-grid animate-fade-in">
+                <div class="stat-card blue">
                     <div class="stat-header">
-                        <div class="stat-icon" style="background: #E0E7FF; color: #4F46E5;">
+                        <div class="stat-icon">
                             <i class="fas fa-users"></i>
                         </div>
                     </div>
                     <div class="stat-value">${stats.total_faculty || 0}</div>
                     <div class="stat-label">Total Faculty</div>
                 </div>
-                <div class="stat-card">
+                <div class="stat-card yellow">
                     <div class="stat-header">
-                        <div class="stat-icon" style="background: #FEF3C7; color: #D97706;">
+                        <div class="stat-icon">
                             <i class="fas fa-calendar-check"></i>
                         </div>
                     </div>
                     <div class="stat-value">${stats.leaves_today || 0}</div>
                     <div class="stat-label">Leaves Today</div>
                 </div>
-                <div class="stat-card">
+                <div class="stat-card red">
                     <div class="stat-header">
-                        <div class="stat-icon" style="background: #FEE2E2; color: #B91C1C;">
+                        <div class="stat-icon">
                             <i class="fas fa-hourglass-half"></i>
                         </div>
                     </div>
                     <div class="stat-value">${stats.pending_approvals || 0}</div>
                     <div class="stat-label">Pending Approvals</div>
                 </div>
-                <div class="stat-card">
+                <div class="stat-card green">
                     <div class="stat-header">
-                        <div class="stat-icon" style="background: #DCFCE7; color: #059669;">
+                        <div class="stat-icon">
                             <i class="fas fa-clock"></i>
                         </div>
                     </div>
@@ -539,7 +533,7 @@ async function renderView(viewId) {
             </div>
 
             <div class="dashboard-sections animate-fade-in">
-                <div class="left-section" style="display: flex; flex-direction: column; gap: 25px;">
+                <div class="left-section" class="flex-column gap-md">
                     <div class="chart-card">
                         <div class="section-header">
                             <h3>Monthly Dept Trends</h3>
@@ -557,7 +551,7 @@ async function renderView(viewId) {
                     </div>
                 </div>
 
-                <div class="right-section" style="display: flex; flex-direction: column; gap: 25px;">
+                <div class="right-section" class="flex-column gap-md">
                     <div class="chart-card" style="min-height: 400px;">
                         <div class="section-header">
                             <h3>Leave Distribution (${currentDept})</h3>
@@ -570,7 +564,7 @@ async function renderView(viewId) {
                     <div class="card">
                         <div class="card-header">
                             <h3 class="card-title">Pending Dept Requests</h3>
-                            <a href="#" onclick="renderView('approvals'); return false;" class="btn btn-secondary btn-sm">View All</a>
+                             <a href="#" onclick="renderView('approvals'); return false;" class="btn btn-secondary btn-sm">View All</a>
                         </div>
                         <div class="table-responsive">
                             <table>
@@ -595,7 +589,7 @@ async function renderView(viewId) {
                         </tr>`;
                 });
             } else {
-                html += `<tr><td colspan="4" style="text-align:center; padding:24px; color:var(--text-muted);">No pending requests.</td></tr>`;
+                html += `<tr><td colspan="4" class="state-empty">No pending requests.</td></tr>`;
             }
             html += `
                                 </tbody>
@@ -608,27 +602,27 @@ async function renderView(viewId) {
             <div class="grid-3col">
                 <div class="card">
                     <div class="card-header"><h3 class="card-title">Faculty Activity</h3></div>
-                    <div style="padding:16px;">
-                        <ul style="list-style:none; padding:0; display:flex; flex-direction:column; gap:10px;">`;
+                    <div class="card-body">
+                        <ul class="flex-column gap-sm">`;
             if (stats.faculty_activity && stats.faculty_activity.length > 0) {
                 stats.faculty_activity.forEach(u => {
-                    html += `<li style="display:flex; justify-content:space-between;"><span>${escapeHtml(u.name)}</span> <strong>${u.leave_count}</strong></li>`;
+                    html += `<li class="flex-between"><span>${escapeHtml(u.name)}</span> <strong>${u.leave_count}</strong></li>`;
                 });
             } else {
-                html += `<li style="color:var(--text-muted);">No activity data.</li>`;
+                html += `<li class="text-tertiary">No activity data.</li>`;
             }
             html += `</ul></div></div>
 
                 <div class="card">
                     <div class="card-header"><h3 class="card-title">Today's Leaves</h3></div>
-                    <div style="padding:16px;">
-                        <ul style="list-style:none; padding:0; display:flex; flex-direction:column; gap:10px;">`;
+                    <div class="card-body">
+                        <ul class="flex-column gap-sm">`;
             if (stats.todays_leave_list && stats.todays_leave_list.length > 0) {
                 stats.todays_leave_list.forEach(u => {
                     html += `<li><i class="fas fa-user-clock" style="margin-right:8px; color:var(--primary);"></i> ${escapeHtml(u.faculty_name)}</li>`;
                 });
             } else {
-                html += `<li style="color:var(--text-muted);">No leaves today.</li>`;
+                html += `<li class="text-tertiary">No leaves today.</li>`;
             }
             html += `</ul></div></div>
 
@@ -643,7 +637,7 @@ async function renderView(viewId) {
                     html += `<tr><td data-label="Faculty">${escapeHtml(s.faculty_name)}</td><td data-label="Status"><span class="badge badge-${statusClass}">${s.status}</span></td></tr>`;
                 });
             } else {
-                html += `<tr><td style="color:var(--text-muted);">No substitution items.</td></tr>`;
+                html += `<tr><td class="text-tertiary">No substitution items.</td></tr>`;
             }
             html += `</tbody></table></div></div>
             
@@ -654,7 +648,7 @@ async function renderView(viewId) {
                         <i class="fas fa-file-pdf"></i> Download Leave Report
                     </button>
                 </div>
-                <div style="padding:16px; color:var(--text-muted); font-size:0.9rem;">
+                <div class="report-desc">
                     Generate a comprehensive PDF report of all faculty leave requests for your department (${escapeHtml(state.user.department)}).
                 </div>
             </div>
@@ -663,36 +657,36 @@ async function renderView(viewId) {
         } else if (role === 'principal' || role === 'admin') {
             html += `
             <div class="stats-grid">
-                <div class="stat-card">
+                <div class="stat-card red">
                     <div class="stat-header">
-                        <div class="stat-icon" style="background: #FEE2E2; color: #B91C1C;">
+                        <div class="stat-icon">
                             <i class="fas fa-calendar-day"></i>
                         </div>
                     </div>
                     <div class="stat-value">${stats.leaves_today || 0}</div>
                     <div class="stat-label">Overall Leaves Today</div>
                 </div>
-                <div class="stat-card">
+                <div class="stat-card yellow">
                     <div class="stat-header">
-                        <div class="stat-icon" style="background: #FEF3C7; color: #D97706;">
+                        <div class="stat-icon">
                             <i class="fas fa-hourglass-start"></i>
                         </div>
                     </div>
                     <div class="stat-value">${stats.pending_approvals || 0}</div>
                     <div class="stat-label">Pending Approvals</div>
                 </div>
-                <div class="stat-card">
+                <div class="stat-card indigo">
                     <div class="stat-header">
-                        <div class="stat-icon" style="background: #E0E7FF; color: #4F46E5;">
+                        <div class="stat-icon">
                             <i class="fas fa-clock"></i>
                         </div>
                     </div>
                     <div class="stat-value">${stats.permissions_used || 0}</div>
                     <div class="stat-label">Permissions Month</div>
                 </div>
-                <div class="stat-card">
+                <div class="stat-card green">
                     <div class="stat-header">
-                        <div class="stat-icon" style="background: #DCFCE7; color: #059669;">
+                        <div class="stat-icon">
                             <i class="fas fa-door-open"></i>
                         </div>
                     </div>
@@ -702,7 +696,7 @@ async function renderView(viewId) {
             </div>
 
             <div class="dashboard-sections animate-fade-in">
-                <div class="left-section" style="display: flex; flex-direction: column; gap: 25px;">
+                <div class="left-section" class="flex-column gap-md">
                     <div class="chart-card">
                         <div class="section-header">
                             <h3>Monthly Leave Trends (Global)</h3>
@@ -720,7 +714,7 @@ async function renderView(viewId) {
                     </div>
                 </div>
 
-                <div class="right-section" style="display: flex; flex-direction: column; gap: 25px;">
+                <div class="right-section" class="flex-column gap-md">
                     <div class="chart-card" style="min-height: 400px;">
                         <div class="section-header">
                             <h3>Departmental Distribution</h3>
@@ -732,17 +726,17 @@ async function renderView(viewId) {
 
                     <div class="card">
                         <div class="card-header"><h3 class="card-title">Pending Approvals Breakdown</h3></div>
-                        <div style="padding: 16px;">
-                            <ul style="list-style:none; padding:0; display:flex; flex-direction:column; gap:16px;">
-                                <li style="display:flex; justify-content:space-between; align-items:center;">
+                        <div class="card-body">
+                            <ul class="flex-column gap-sm">
+                                <li class="flex-between">
                                     <span>Substitution Pending</span>
                                     <span class="badge badge-pending">${stats.pending_breakdown?.substitution || 0}</span>
                                 </li>
-                                <li style="display:flex; justify-content:space-between; align-items:center;">
+                                <li class="flex-between">
                                     <span>HoD Approval Pending</span>
                                     <span class="badge badge-pending">${stats.pending_breakdown?.hod || 0}</span>
                                 </li>
-                                <li style="display:flex; justify-content:space-between; align-items:center;">
+                                <li class="flex-between">
                                     <span>Principal Approval Pending</span>
                                     <span class="badge badge-pending">${stats.pending_breakdown?.principal || 0}</span>
                                 </li>
@@ -763,12 +757,12 @@ async function renderView(viewId) {
                             <tr><th>Name</th><th>Department</th><th>Total Requests</th><th>Status</th></tr>
                         </thead>
                         <tbody>`;
-            if (stats.individual_records && stats.individual_records.length > 0) {
-                stats.individual_records.slice(0, 10).forEach(u => {
+            if (stats.faculty_activity && stats.faculty_activity.length > 0) {
+                stats.faculty_activity.slice(0, 10).forEach(u => {
                     html += `<tr>
                         <td data-label="Name"><strong>${escapeHtml(u.name)}</strong></td>
                         <td data-label="Dept">${escapeHtml(u.department)}</td>
-                        <td data-label="Total">${u.total_requests}</td>
+                        <td data-label="Total">${u.leave_count}</td>
                         <td data-label="Status"><span class="badge badge-secondary">Active</span></td>
                     </tr>`;
                 });
@@ -802,9 +796,9 @@ async function renderView(viewId) {
 
         let html = `
             <div class="card">
-                <div class="card-header" style="flex-wrap: wrap; gap: 15px;">
+                <div class="card-header flex-wrap gap-sm">
                     <h3 class="card-title">User Management (${response.total} Users)</h3>
-                    <div class="search-filters" style="display: flex; gap: 10px; flex-grow: 1; align-items: center;">
+                    <div class="search-filters flex-grow-1 align-items-center gap-sm">
                         <input type="text" id="adminUserSearch" class="form-control" placeholder="Search by name or code..." value="${escapeHtml(search)}" style="max-width: 250px;">
                         <select id="adminUserDept" class="form-control" style="max-width: 150px;">
                             <option value="">All Departments</option>
@@ -1129,8 +1123,8 @@ async function renderView(viewId) {
                         <thead>
                             <tr>
                                 <th>Type</th>
+                                <th style="width:250px;">Subject / Class / Hour</th>
                                 <th>Date Range</th>
-                                <th>Reason</th>
                                 <th>Status</th>
                                 <th>PDF</th>
                             </tr>
@@ -1146,8 +1140,12 @@ async function renderView(viewId) {
                 html += `
                     <tr>
                         <td data-label="Type"><strong>${escapeHtml(l.leave_type)}</strong></td>
+                        <td data-label="Arrangements">
+                            <div style="font-size:0.85rem; color: #1e293b; line-height:1.4;">
+                                ${l.arrangements ? escapeHtml(l.arrangements).split(' | ').join('<br>') : '<span style="color:#94a3b8;">No academic details</span>'}
+                            </div>
+                        </td>
                         <td data-label="Date Range">${l.start_date} → ${l.end_date}</td>
-                        <td data-label="Reason" class="text-muted">${escapeHtml(l.reason)}</td>
                         <td data-label="Status">
                             <div style="display:flex; flex-direction:column; gap:4px;">
                                 <span class="badge badge-${hStatus}" style="font-size:0.7rem;">HOD: ${l.hod_status}</span>
@@ -1181,6 +1179,8 @@ async function renderView(viewId) {
                             <tr>
                                 <th>Faculty</th>
                                 <th>Date</th>
+                                <th>Class</th>
+                                <th>Subject</th>
                                 <th>Hour</th>
                                 <th>Action</th>
                             </tr>
@@ -1193,6 +1193,8 @@ async function renderView(viewId) {
                     <tr>
                         <td data-label="Faculty"><strong>${escapeHtml(s.faculty_name)}</strong></td>
                         <td data-label="Date">${s.leave_date}</td>
+                        <td data-label="Class">${escapeHtml(s.class_name || '-')}</td>
+                        <td data-label="Subject">${escapeHtml(s.subject_code || '-')}</td>
                         <td data-label="Hour">Hour ${s.hour}</td>
                         <td data-label="Action">
                             <div style="display:flex; gap:8px;">
@@ -1203,7 +1205,7 @@ async function renderView(viewId) {
                     </tr>`;
             });
         } else {
-            html += `<tr><td colspan="4" style="text-align:center; padding:32px; color:var(--text-muted);">No pending substitution requests.</td></tr>`;
+            html += `<tr><td colspan="6" style="text-align:center; padding:32px; color:var(--text-muted);">No pending substitution requests.</td></tr>`;
         }
         html += `</tbody></table></div></div>`;
         container.innerHTML = html;
@@ -1343,58 +1345,72 @@ async function handleApplyLeave(e) {
         return;
     }
 
-    // Calculate days for UI validation mapping
     const start = new Date(data.start_date);
     const end = new Date(data.end_date);
 
-    // Sunday Validation
     if (start.getDay() === 0 || end.getDay() === 0) {
         showToast("Leave cannot start or end on a Sunday.", "warning");
         return;
     }
 
-    const timeDiff = end.getTime() - start.getTime();
-    const totalDays = Math.ceil(timeDiff / (1000 * 3600 * 24)) + 1;
-
-    // Format Substitutions based on duration
-    data.substitutions = [];
-    let hasSelectedSubstitute = false;
-
-    // Check all keys for substitution data
-    Object.keys(data).forEach(key => {
-        if (key.startsWith('substitute_hour_')) {
-            const sid = data[key];
-            if (sid) {
-                // Extract hour and date from key: substitute_hour_${h}_date_${isoDate}
-                const parts = key.split('_');
-                const hour = parts[2];
-                const date = parts[4];
-                data.substitutions.push({ substitute_id: sid, hour: hour, date: date });
-                hasSelectedSubstitute = true;
-            }
-            delete data[key];
-        }
-    });
-
-    const startD = new Date(data.start_date);
-    const endD = new Date(data.end_date);
-    const diffDays = Math.ceil((endD - startD) / (1000 * 60 * 60 * 24)) + 1;
-
-    // For 5 days or less, ensure at least one substitute is picked
-    if (diffDays <= 5 && !hasSelectedSubstitute) {
-        showToast("Please select at least one hourly substitute for leaves 5 days or less.", "warning");
-        return;
+    const btn = e.target.querySelector('button[type="submit"]');
+    const originalText = btn ? btn.innerHTML : 'Apply Leave';
+    if (btn) {
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processing...';
+        btn.disabled = true;
     }
 
+    try {
+        data.substitutions = [];
+        let hasSelectedSubstitute = false;
 
-    // If > 5 days, substitution array is just empty.
-    const res = await apiCall('/leaves.php/apply', 'POST', data);
-    if (!res.error) {
-        showToast('Leave Applied! Waiting for Substitute Acceptance.', 'success');
-        delete state.cache['analytics']; // Purge cache
-        renderView('leaves');
-    } else {
-        showToast(res.error, 'error');
+        Object.keys(data).forEach(key => {
+            if (key.startsWith('substitute_hour_')) {
+                const sid = data[key];
+                if (sid) {
+                    const parts = key.split('_'); // substitute_hour_{h}_date_{isoDate}
+                    const h = parts[2];
+                    const isoDate = parts[4];
+                    
+                    data.substitutions.push({ 
+                        substitute_id: sid, 
+                        hour: h, 
+                        date: isoDate,
+                        class_name: data[`substitute_class_${h}_date_${isoDate}`] || '',
+                        subject_code: data[`substitute_subject_${h}_date_${isoDate}`] || ''
+                    });
+                    hasSelectedSubstitute = true;
+                }
+            }
+        });
+
+        // Clean up temporary substitution keys from main payload
+        Object.keys(data).forEach(key => {
+            if (key.startsWith('substitute_')) {
+                delete data[key];
+            }
+        });
+
+        const diffDays = Math.ceil((end - start) / (1000 * 60 * 60 * 24)) + 1;
+
+        if (diffDays <= 5 && !hasSelectedSubstitute) {
+            showToast("Please select at least one hourly substitute for leaves 5 days or less.", "warning");
+            return;
+        }
+
+        const res = await apiCall('/leaves.php/apply', 'POST', data);
+        if (!res.error) {
+            showToast('Leave Applied! Waiting for Substitute Acceptance.', 'success');
+            delete state.cache['analytics']; // Purge cache
+            renderView('leaves');
+        } else {
+            showToast(res.error, 'error');
+        }
+    } finally {
+        if (btn) {
+            btn.innerHTML = originalText;
+            btn.disabled = false;
+        }
     }
 }
 
@@ -1412,10 +1428,16 @@ async function actionSubstitution(id, status) {
 }
 
 async function approveLeave(id, status) {
-    let role = state.user.role;
+    if (!confirm(`Are you sure you want to ${status} this leave?`)) return;
+
+    let role = state.user.role.toLowerCase();
     let endpoint = '';
     if (role === 'hod') endpoint = `/leaves.php/${id}/approve/hod`;
-    if (role === 'principal') endpoint = `/leaves.php/${id}/approve/principal`;
+    if (role === 'principal' || role === 'admin') endpoint = `/leaves.php/${id}/approve/principal`;
+
+    // Try to find the button invoking this if it's passed, but since it's inline onclick we can't easily grab event target.
+    // We will just show a global toast for buffering.
+    showToast(`Processing ${status}...`, 'info');
 
     const res = await apiCall(endpoint, 'PUT', { status });
     if (!res.error) {
@@ -1482,27 +1504,38 @@ async function handleCreateUser(e) {
     const formData = new FormData(e.target);
     const data = Object.fromEntries(formData.entries());
 
-    const mode = data.mode || 'create';
-    let res;
-
-    if (mode === 'update') {
-        data.action = 'update';
-        res = await apiCall('/manage_user.php', 'POST', data);
-    } else {
-        // If username is empty, we don't have email anymore to fall back to in backend smoothly without changes
-        // But the form says username is required. So we just send data as is.
-        // The implementation plan says "remove email from data object"
-        delete data.email;
-        res = await apiCall('/users.php/create', 'POST', data);
+    const btn = e.target.querySelector('button[type="submit"]');
+    const originalText = btn ? btn.innerHTML : 'Submit';
+    if (btn) {
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processing...';
+        btn.disabled = true;
     }
 
-    if (res && !res.error) {
-        showToast(mode === 'update' ? 'User updated successfully!' : 'User created successfully!', 'success');
-        hideCreateUserModal();
-        renderView('users', state.usersPage); // Refresh user list on current page
-        e.target.reset(); // Clear form
-    } else {
-        showToast(res?.error || 'Operation failed', 'error');
+    try {
+        const mode = data.mode || 'create';
+        let res;
+
+        if (mode === 'update') {
+            data.action = 'update';
+            res = await apiCall('/manage_user.php', 'POST', data);
+        } else {
+            delete data.email;
+            res = await apiCall('/users.php/create', 'POST', data);
+        }
+
+        if (res && !res.error) {
+            showToast(mode === 'update' ? 'User updated successfully!' : 'User created successfully!', 'success');
+            hideCreateUserModal();
+            renderView('users', state.usersPage); // Refresh user list on current page
+            e.target.reset(); // Clear form
+        } else {
+            showToast(res?.error || 'Operation failed', 'error');
+        }
+    } finally {
+        if (btn) {
+            btn.innerHTML = originalText;
+            btn.disabled = false;
+        }
     }
 }
 
@@ -1625,14 +1658,18 @@ function calculateDaysAndShowSubstitutes() {
                 let dateStr = dayDate.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
 
                 html += `<div style="margin-bottom: 20px;">
-                            <h5 style="margin-top:0; margin-bottom:10px; border-bottom: 1px solid rgba(0,0,0,0.1); padding-bottom: 5px; color: var(--text-color);">Day ${d + 1} (${dateStr})</h5>
-                            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px;">`;
+                            <h5 class="card-body border-bottom text-primary">Day ${d + 1} (${dateStr})</h5>
+                            <div class="grid-adaptive gap-sm">`;
                 for (let h = 1; h <= 8; h++) {
                     const isoDate = dayDate.toISOString().split('T')[0];
-                    html += `   <div>
-                                    <label style="font-size: 0.85em;">Hour ${h}</label>
-                                    <select class="form-control" name="substitute_hour_${h}_date_${isoDate}" style="padding: 5px; font-size: 0.9em;">
-                                        <option value="">-- Select --</option>
+                    html += `   <div style="padding: 10px; border: 1px solid var(--border-color); border-radius: 6px;">
+                                    <label class="text-sm font-medium" style="display:block; margin-bottom:5px;">Hour ${h}</label>
+                                    <div style="display:flex; gap:8px; margin-bottom:8px;">
+                                        <input type="text" class="form-control form-control-sm" name="substitute_class_${h}_date_${isoDate}" placeholder="Class (e.g. CSE-A)">
+                                        <input type="text" class="form-control form-control-sm" name="substitute_subject_${h}_date_${isoDate}" placeholder="Subject (e.g. CS101)">
+                                    </div>
+                                    <select class="form-control form-control-sm" name="substitute_hour_${h}_date_${isoDate}">
+                                        <option value="">-- Select Substitute Faculty --</option>
                                         ${window.cachedSubOptions || ''}
                                     </select>
                                 </div>`;
@@ -1777,49 +1814,85 @@ window.handleCreateUser = handleCreateUser;
 window.deleteUser = deleteUser;
 
 function toggleSidebar() {
-    const sidebar = document.querySelector('.sidebar');
+    const sidebar = document.getElementById('sidebar');
     const overlay = document.getElementById('sidebar-overlay');
-    sidebar.classList.toggle('active');
-    if (overlay) {
-        overlay.classList.toggle('active');
-    }
+    if (sidebar) sidebar.classList.toggle('active');
+    if (overlay) overlay.classList.toggle('active');
 }
 window.toggleSidebar = toggleSidebar;
 
+// --- Theme Management ---
+function initTheme() {
+    const savedTheme = localStorage.getItem('theme') || 'light';
+    document.documentElement.setAttribute('data-theme', savedTheme);
+    updateThemeIcon(savedTheme);
+}
+
+function toggleTheme() {
+    const currentTheme = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', currentTheme);
+    localStorage.setItem('theme', currentTheme);
+    updateThemeIcon(currentTheme);
+}
+
+function updateThemeIcon(theme) {
+    const icon = document.querySelector('#theme-toggle i');
+    if (icon) {
+        icon.className = theme === 'dark' ? 'fas fa-sun' : 'fas fa-moon';
+    }
+}
+window.initTheme = initTheme;
+window.toggleTheme = toggleTheme;
 window.loadDepartmentDrilldown = async function (dept) {
     const container = document.getElementById('drilldown-modal-container');
     if (!container) return;
 
-    // Show Loading Schema
+    // Show Loading
     container.innerHTML = `
-    <div style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 9999; display: flex; align-items: center; justify-content: center; backdrop-filter: blur(3px);">
-        <div class="glass-card" style="background: var(--card-bg, #fff); padding: 30px; border-radius: 12px; max-width: 800px; width: 90%; max-height: 90vh; overflow-y: auto; position: relative; box-shadow: 0 10px 30px rgba(0,0,0,0.2);">
-            <button onclick="document.getElementById('drilldown-modal-container').style.display='none'" style="position: absolute; top: 15px; right: 20px; background: none; border: none; font-size: 1.5rem; cursor: pointer; color: var(--text-muted);">&times;</button>
-            <h2 style="margin-top: 0; color: var(--primary);"><i class="fa fa-building" style="margin-right: 10px;"></i> ${escapeHtml(dept)} Department Leaves</h2>
-            <p style="text-align:center; padding: 20px;"><i class="fa fa-spinner fa-spin"></i> Loading records...</p>
+    <div class="modal-overlay">
+        <div class="modal-content animate-fade-in">
+            <button onclick="document.getElementById('drilldown-modal-container').style.display='none'" class="modal-close">&times;</button>
+            <h2 class="modal-title"><i class="fa fa-building"></i> ${escapeHtml(dept)} Department Leaves</h2>
+            <div class="card-body text-center">
+                <i class="fa fa-spinner fa-spin fa-2x"></i>
+                <p class="text-muted">Loading records...</p>
+            </div>
         </div>
     </div>`;
     container.style.display = 'block';
 
     const data = await apiCall(`/analytics.php?department=${encodeURIComponent(dept)}`);
     if (!data || !data.department_drilldown) {
-        container.querySelector('div.glass-card').innerHTML = `
-            <button onclick="document.getElementById('drilldown-modal-container').style.display='none'" style="position: absolute; top: 15px; right: 20px; background: none; border: none; font-size: 1.5rem; cursor: pointer; color: #e74c3c;">&times;</button>
-            <h2 style="margin-top: 0; color: #e74c3c;">Error</h2>
-            <p>Failed to load data for this department.</p>
+        container.querySelector('.modal-content').innerHTML = `
+            <button onclick="document.getElementById('drilldown-modal-container').style.display='none'" class="modal-close">&times;</button>
+            <h2 class="modal-title" style="color: var(--danger);">Error</h2>
+            <p class="text-muted">Failed to load data for this department.</p>
         `;
         return;
     }
 
-    let html = `<div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 20px; background: rgba(0,0,0,0.03); padding: 15px; border-radius: 8px;">
-                    <div style="text-align: center;"><strong>Total</strong><br><span style="font-size: 1.5rem;">${data.drilldown_stats.total}</span></div>
-                    <div style="text-align: center; color: #f39c12;"><strong>Pending</strong><br><span style="font-size: 1.5rem;">${data.drilldown_stats.pending}</span></div>
-                    <div style="text-align: center; color: #2ecc71;"><strong>Approved</strong><br><span style="font-size: 1.5rem;">${data.drilldown_stats.approved}</span></div>
-                    <div style="text-align: center; color: #e74c3c;"><strong>Rejected</strong><br><span style="font-size: 1.5rem;">${data.drilldown_stats.rejected}</span></div>
-                </div>`;
+    let html = `
+        <div class="drilldown-stats-grid">
+            <div class="drilldown-stat-item">
+                <span class="text-muted">Total</span>
+                <span class="drilldown-stat-value">${data.drilldown_stats.total}</span>
+            </div>
+            <div class="drilldown-stat-item" style="color: var(--warning);">
+                <span class="text-muted">Pending</span>
+                <span class="drilldown-stat-value">${data.drilldown_stats.pending}</span>
+            </div>
+            <div class="drilldown-stat-item" style="color: var(--success);">
+                <span class="text-muted">Approved</span>
+                <span class="drilldown-stat-value">${data.drilldown_stats.approved}</span>
+            </div>
+            <div class="drilldown-stat-item" style="color: var(--danger);">
+                <span class="text-muted">Rejected</span>
+                <span class="drilldown-stat-value">${data.drilldown_stats.rejected}</span>
+            </div>
+        </div>`;
 
     if (data.department_drilldown.length === 0) {
-        html += `<p style="text-align: center; opacity: 0.6; padding: 30px;">No leave requests found for this month.</p>`;
+        html += `<p class="card-body text-center text-muted">No leave requests found for this month.</p>`;
     } else {
         html += `<div class="table-container"><table>
                     <thead><tr><th>Faculty Name</th><th>Leave Type</th><th>Date</th><th>Status</th></tr></thead>
@@ -1831,7 +1904,7 @@ window.loadDepartmentDrilldown = async function (dept) {
 
             html += `<tr>
                         <td data-label="Faculty Name"><strong>${escapeHtml(r.faculty_name)}</strong></td>
-                        <td data-label="Leave Type"><i class="fa fa-tag" style="opacity:0.5; margin-right:5px;"></i> ${escapeHtml(r.leave_type)}</td>
+                        <td data-label="Leave Type"><i class="fa fa-tag" class="text-muted mr-1"></i> ${escapeHtml(r.leave_type)}</td>
                         <td data-label="Date">${escapeHtml(r.leave_date)}</td>
                         <td data-label="Status"><span class="status-badge ${badgeClass}">${escapeHtml(r.status)}</span></td>
                      </tr>`;
@@ -1840,9 +1913,9 @@ window.loadDepartmentDrilldown = async function (dept) {
     }
 
     container.querySelector('div.glass-card').innerHTML = `
-        <button onclick="document.getElementById('drilldown-modal-container').style.display='none'" style="position: absolute; top: 15px; right: 20px; background: none; border: none; font-size: 1.5rem; cursor: pointer; color: var(--text-muted);">&times;</button>
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-            <h2 style="margin: 0; color: var(--primary);"><i class="fa fa-building" style="margin-right: 10px;"></i> ${escapeHtml(dept)} Department Leaves <small style="font-size: 0.5em; color: var(--text-muted); font-weight: normal;">(This Month)</small></h2>
+        <button onclick="document.getElementById('drilldown-modal-container').style.display='none'" class="modal-close">&times;</button>
+        <div class="flex-between gap-sm">
+            <h2 class="modal-title"><i class="fa fa-building" class="mr-2"></i> ${escapeHtml(dept)} Department Leaves <small class="text-muted text-sm">(This Month)</small></h2>
             <button class="btn btn-primary btn-sm" onclick="downloadAuditReport('${escapeHtml(dept)}')"><i class="fas fa-file-pdf"></i> PDF Report</button>
         </div>
         ${html}
@@ -2100,12 +2173,26 @@ async function handleUpdatePassword(e) {
         return;
     }
 
-    const res = await apiCall('/change_password.php', 'POST', data);
-    if (!res.error) {
-        showToast("Password updated successfully!", "success");
-        e.target.reset();
-    } else {
-        showToast(res.error, "error");
+    const btn = e.target.querySelector('button[type="submit"]');
+    const originalText = btn ? btn.innerHTML : 'Update Password';
+    if (btn) {
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Updating...';
+        btn.disabled = true;
+    }
+
+    try {
+        const res = await apiCall('/change_password.php', 'POST', data);
+        if (!res.error) {
+            showToast("Password updated successfully!", "success");
+            e.target.reset();
+        } else {
+            showToast(res.error, "error");
+        }
+    } finally {
+        if (btn) {
+            btn.innerHTML = originalText;
+            btn.disabled = false;
+        }
     }
 }
 
@@ -2114,3 +2201,5 @@ if (window.location.pathname.includes('dashboard.html')) {
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initDashboard);
     else initDashboard();
 }
+
+export { initTheme };

@@ -45,15 +45,29 @@ header('X-Cache: MISS');
 // --- End Caching Logic ---
 
 if (isTeachingRole($user['role'])) {
-    // 1. Total leaves
-    $stmt = $conn->prepare("SELECT COUNT(*) FROM leave_requests WHERE user_id = ? AND hod_status != 'Rejected' AND principal_status != 'Rejected'");
-    $stmt->execute([$user['id']]);
+    // 1. Total leaves this Year (excluding Rejected/Cancelled)
+    $stmt = $conn->prepare("SELECT COUNT(*) FROM leave_requests WHERE user_id = ? AND YEAR(start_date) = ? AND hod_status NOT IN ('Rejected', 'Cancelled') AND principal_status NOT IN ('Rejected', 'Cancelled')");
+    $stmt->execute([$user['id'], $year]);
     $response['total_leaves'] = (int)$stmt->fetchColumn();
 
-    // 2. Casual Leave Used this Month
-    $stmt = $conn->prepare("SELECT SUM(DATEDIFF(end_date, start_date) + 1) FROM leave_requests WHERE user_id = ? AND leave_type = 'Casual Leave' AND MONTH(start_date) = ? AND YEAR(start_date) = ? AND hod_status != 'Rejected' AND principal_status != 'Rejected'");
-    $stmt->execute([$user['id'], $month, $year]);
-    $cl_used = (int)$stmt->fetchColumn();
+    // 2. Casual Leave Used this Year (excluding Rejected/Cancelled)
+    $stmt = $conn->prepare("SELECT start_date, end_date FROM leave_requests WHERE user_id = ? AND leave_type = 'Casual' AND hod_status NOT IN ('Rejected', 'Cancelled') AND principal_status NOT IN ('Rejected', 'Cancelled')");
+    $stmt->execute([$user['id']]);
+    $leaves = $stmt->fetchAll();
+    
+    $cl_used = 0;
+    foreach ($leaves as $l) {
+        $start = new DateTime($l['start_date']);
+        $end = new DateTime($l['end_date']);
+        $curr = clone $start;
+        while ($curr <= $end) {
+            // Count for the entire year, excluding Sundays
+            if ($curr->format('Y') == $year && $curr->format('N') != 7) {
+                $cl_used++;
+            }
+            $curr->modify('+1 day');
+        }
+    }
     $response['casual_leave_used'] = $cl_used;
 
     // 3. Remaining Casual Leave
@@ -128,17 +142,30 @@ if (isTeachingRole($user['role'])) {
         if($s['status'] === 'REJECTED') $response['substitution_stats']['rejected'] = $s['count'];
     }
 
+    // 8.5 Substitution Requests Detail
+    $stmt = $conn->prepare("
+        SELECT u.name as substitute_faculty, s.status, s.date as leave_date
+        FROM leave_substitutions s
+        JOIN users u ON s.substitute_user_id = u.id
+        JOIN leave_requests l ON s.leave_request_id = l.id
+        WHERE l.user_id = ? AND s.status = 'PENDING'
+    ");
+    $stmt->execute([$user['id']]);
+    $response['substitution_requests'] = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
     // 9. Recent Activity (Latest 5 from leaves, permissions, outpasses union)
     $stmt = $conn->prepare("
-        SELECT 'Leave Applied' as activity_type, leave_type as details, created_at as date, 
+        SELECT 'Leave Applied' as activity_type, leave_type, start_date, 
                CASE WHEN hod_status='Rejected' OR principal_status='Rejected' THEN 'Rejected'
-                    WHEN principal_status='Approved' THEN 'Approved' ELSE 'Pending' END as status
-        FROM leave_requests WHERE user_id = ?
+                    WHEN hod_status='Cancelled' OR principal_status='Cancelled' THEN 'Cancelled'
+                    WHEN principal_status='Approved' THEN 'Approved' ELSE 'Pending' END as status,
+               created_at as sort_date
+        FROM leave_requests WHERE user_id = ? AND hod_status != 'Cancelled'
         UNION ALL
-        SELECT 'Permission Applied', status, created_at, status FROM faculty_permissions WHERE user_id = ?
+        SELECT 'Permission Applied', 'Permission' as leave_type, permission_date as start_date, status, created_at as sort_date FROM faculty_permissions WHERE user_id = ?
         UNION ALL
-        SELECT 'Outpass Applied', status, created_at, status FROM faculty_outpasses WHERE user_id = ?
-        ORDER BY date DESC LIMIT 5
+        SELECT 'Outpass Applied', 'Outpass' as leave_type, outpass_date as start_date, status, created_at as sort_date FROM faculty_outpasses WHERE user_id = ?
+        ORDER BY sort_date DESC LIMIT 5
     ");
     $stmt->execute([$user['id'], $user['id'], $user['id']]);
     $response['recent_leaves'] = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -385,26 +412,26 @@ if (isTeachingRole($user['role'])) {
     $stmt->execute([$month, $year]);
     $response['leave_type_breakdown'] = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-    // 6. High Frequency Users (Leaves + Permissions + Outpasses)
+    // 6. High Frequency Users (Leaves + Permissions + Outpasses) -> Maps to faculty_activity
     $stmt = $conn->prepare("
         SELECT u.id, u.name, u.department, 
         (
             (SELECT COUNT(*) FROM leave_requests l WHERE l.user_id = u.id AND MONTH(l.start_date) = ? AND YEAR(l.start_date) = ?) +
             (SELECT COUNT(*) FROM faculty_permissions p WHERE p.user_id = u.id AND MONTH(p.permission_date) = ? AND YEAR(p.permission_date) = ?) +
             (SELECT COUNT(*) FROM faculty_outpasses o WHERE o.user_id = u.id AND MONTH(o.outpass_date) = ? AND YEAR(o.outpass_date) = ?)
-        ) as total_requests
+        ) as leave_count
         FROM users u
         WHERE LOWER(u.role) IN ('faculty', 'assistant professor (ap)', 'associate professor', 'professor')
-        HAVING total_requests > 0
-        ORDER BY total_requests DESC
+        HAVING leave_count > 0
+        ORDER BY leave_count DESC
         LIMIT 10
     ");
     $stmt->execute([$month, $year, $month, $year, $month, $year]);
-    $response['individual_records'] = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    $response['faculty_activity'] = $stmt->fetchAll(PDO::FETCH_ASSOC);
     
-    // Today's Leave List
+    // Today's Leave List -> Maps to todays_leave_list
     $stmt = $conn->prepare("
-        SELECT u.name, u.department 
+        SELECT u.name as faculty_name, u.department 
         FROM leave_requests l 
         JOIN users u ON l.user_id = u.id 
         WHERE ? BETWEEN l.start_date AND l.end_date 
@@ -412,6 +439,19 @@ if (isTeachingRole($user['role'])) {
     ");
     $stmt->execute([$today]);
     $response['todays_leave_list'] = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    // Substitution Status -> Maps to substitution_status
+    $stmt = $conn->prepare("
+        SELECT u.name as faculty_name, l.leave_type, s.status
+        FROM leave_requests l
+        JOIN users u ON l.user_id = u.id
+        JOIN leave_substitutions s ON s.leave_request_id = l.id
+        WHERE MONTH(l.start_date) = ? AND YEAR(l.start_date) = ?
+        ORDER BY l.created_at DESC
+        LIMIT 10
+    ");
+    $stmt->execute([$month, $year]);
+    $response['substitution_status'] = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
     // 7. System-wide Monthly Trends (Last 6 Months)
     $stmtTrend = $conn->prepare("
