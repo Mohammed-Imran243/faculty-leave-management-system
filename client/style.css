@@ -1139,6 +1139,163 @@ td {
 .toast-warning .toast-icon { color: var(--warning); }
 .toast-info .toast-icon { color: var(--info); }
 
+
+/* --- Utilities & Animations --- */
+.animate-fade-in {
+    animation: fadeIn 0.5s ease forwards;
+    opacity: 0;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10) }
+    to { opacity: 1; transform: translateY(0) }
+}
+
+.flex-between {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+/* --- Profile Styles --- */
+.profile-container {
+    max-width: 1000px;
+    margin: 20px auto;
+    padding: 0 20px;
+}
+
+.profile-header-card {
+    background: white;
+    padding: 40px;
+    border-radius: 16px;
+    box-shadow: var(--card-shadow);
+    display: flex;
+    align-items: center;
+    gap: 30px;
+    margin-bottom: 30px;
+    border: 1px solid #f1f5f9;
+}
+
+.profile-avatar-large {
+    width: 100px;
+    height: 100px;
+    background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 3rem;
+    font-weight: 800;
+    color: white;
+    box-shadow: 0 10px 15px -3px rgba(79, 70, 229, 0.4);
+}
+
+.profile-title h2 {
+    font-size: 1.85rem;
+    color: #1e293b;
+    margin-bottom: 5px;
+}
+
+.role-badge-large {
+    display: inline-block;
+    padding: 6px 14px;
+    background: var(--primary-light);
+    color: var(--primary);
+    border-radius: 30px;
+    font-size: 0.85rem;
+    font-weight: 700;
+    letter-spacing: 1px;
+}
+
+.profile-grid {
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+    gap: 30px;
+}
+
+.profile-card {
+    background: white;
+    border-radius: 16px;
+    box-shadow: var(--card-shadow);
+    border: 1px solid #f1f5f9;
+    overflow: hidden;
+}
+
+.profile-card .card-header {
+    padding: 20px 24px;
+    border-bottom: 1px solid #f1f5f9;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: #fafafa;
+}
+
+.profile-card .card-header i {
+    font-size: 1.25rem;
+    color: var(--primary);
+}
+
+.profile-card .card-header h3 {
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: #334155;
+}
+
+.profile-card .card-body {
+    padding: 24px;
+}
+
+.info-item {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    padding: 16px 0;
+    border-bottom: 1px solid #f8fafc;
+}
+
+.info-item:last-child {
+    border-bottom: none;
+}
+
+.info-icon {
+    width: 44px;
+    height: 44px;
+    background: #f1f5f9;
+    color: #64748b;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.25rem;
+}
+
+.info-content label {
+    display: block;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    color: #94a3b8;
+    letter-spacing: 0.5px;
+    margin-bottom: 4px;
+}
+
+.info-content p {
+    font-size: 1rem;
+    font-weight: 600;
+    color: #1e293b;
+}
+
+@media (max-width: 992px) {
+    .profile-grid {
+        grid-template-columns: 1fr;
+    }
+    .profile-header-card {
+        flex-direction: column;
+        text-align: center;
+        padding: 30px;
+    }
+}
+
 @media (max-width: 480px) {
     .toast-container {
         top: 10px;

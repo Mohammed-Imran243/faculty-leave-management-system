@@ -1326,6 +1326,29 @@ async function renderView(viewId) {
                         </div>
                     </div>
 
+                    <div class="profile-card animate-fade-in" style="animation-delay: 0.2s;">
+                        <div class="card-header">
+                            <i class="fas fa-cog"></i>
+                            <h3>Quick Actions</h3>
+                        </div>
+                        <div class="card-body" style="display: flex; flex-direction: column; gap: 15px;">
+                            <button class="btn btn-primary btn-block" onclick="showToast('Feature coming soon: Editing Profile', 'info')">
+                                <i class="fas fa-edit"></i> Edit Profile
+                            </button>
+                            <button class="btn btn-secondary btn-block" onclick="showToast('Feature coming soon: Security Settings', 'info')">
+                                <i class="fas fa-lock"></i> Change Password
+                            </button>
+                            <div style="margin-top: 20px; padding: 15px; background: #f8fafc; border-radius: 12px; border: 1px dashed #cbd5e1;">
+                                <h4 style="font-size: 0.8rem; color: #64748b; margin-bottom: 10px; display: flex; align-items: center; gap: 8px;">
+                                    <i class="fas fa-info-circle"></i> ACCOUNT STATUS
+                                </h4>
+                                <div class="flex-between">
+                                    <span style="font-size: 0.9rem; font-weight: 500; color: #334155;">Institutional Access</span>
+                                    <span class="badge badge-success">ACTIVE</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>`;
         return;
